@@ -4,10 +4,16 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+const connectDB = require("./config/db");
+require("./config/redis");
+
+const authRoutes = require("./routes/auth.routes");
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -17,6 +23,12 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`DevSpace server running on port ${PORT}`);
-});
+const startServer = async () => {
+  await connectDB();
+
+  app.listen(PORT, () => {
+    console.log(`DevSpace server running on port ${PORT}`);
+  });
+};
+
+startServer();
