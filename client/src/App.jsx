@@ -1,7 +1,13 @@
 import AppRoutes from "./AppRoutes";
+import SocketTest from "./components/SocketTest";
 
 function App() {
-  return <AppRoutes />;
+  return (
+    <>
+      <SocketTest />
+      <AppRoutes />
+    </>
+  );
 }
 
 export default App;

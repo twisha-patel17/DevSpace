@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const http = require("http");
 
 dotenv.config();
 
@@ -9,13 +10,28 @@ require("./config/redis");
 
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
+const projectRoutes = require("./routes/project.routes");
+
+const initializeSocket = require("./sockets/socket");
 
 const app = express();
 
-app.use(cors());
+const server = http.createServer(app);
+
+initializeSocket(server);
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/projects", projectRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -28,7 +44,7 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   await connectDB();
 
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`DevSpace server running on port ${PORT}`);
   });
 };
