@@ -1,57 +1,73 @@
-const { registerSchema,loginSchema } = require("../validators/auth.validator");
-
-const { registerUser, loginUser } = require("../services/auth.service");
+const {
+  registerUser,
+  loginUser,
+} = require("../services/auth.service");
 
 const register = async (req, res) => {
   try {
-    const validatedData = registerSchema.parse(req.body);
+    const { username, email, password } = req.body;
 
-    const user = await registerUser(validatedData);
-
-    res.status(201).json({
-      success: true,
-      message: "User registered successfully",
-      user,
-    });
-  } catch (error) {
-    if (error.name === "ZodError") {
+    if (!username || !email || !password) {
       return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: error.issues,
+        message: "All fields are required",
       });
     }
 
-    res.status(400).json({
-      success: false,
-      message: error.message,
+    const result = await registerUser({
+      username,
+      email,
+      password,
+    });
+
+    res.status(201).json({
+      message: "User registered successfully",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+
+    if (error.message === "User already exists") {
+      return res.status(409).json({
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
     });
   }
 };
 
 const login = async (req, res) => {
   try {
-    const validatedData = loginSchema.parse(req.body);
+    const { email, password } = req.body;
 
-    const user = await loginUser(validatedData);
-
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-      user,
-    });
-  } catch (error) {
-    if (error.name === "ZodError") {
+    if (!email || !password) {
       return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: error.issues,
+        message: "Email and password are required",
       });
     }
 
-    res.status(401).json({
-      success: false,
-      message: error.message,
+    const result = await loginUser({
+      email,
+      password,
+    });
+
+    res.status(200).json({
+      message: "Login successful",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+
+    if (error.message === "Invalid email or password") {
+      return res.status(401).json({
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error",
     });
   }
 };
