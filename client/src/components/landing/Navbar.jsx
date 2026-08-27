@@ -1,9 +1,21 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   const closeMenu = () => setMenuOpen(false);
+
+  const goToLogin = () => {
+    closeMenu();
+    navigate("/login");
+  };
+
+  const goToRegister = () => {
+    closeMenu();
+    navigate("/register");
+  };
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#090a0b]/90 backdrop-blur-xl">
@@ -60,17 +72,19 @@ const Navbar = () => {
         <div className="hidden items-center gap-6 md:flex">
           <button
             type="button"
+            onClick={goToLogin}
             className="text-[13px] text-zinc-500 transition-colors duration-200 hover:text-zinc-100"
           >
             Log in
           </button>
 
-          <a
-            href="#cta"
+          <button
+            type="button"
+            onClick={goToRegister}
             className="inline-flex h-9 items-center justify-center rounded-md bg-[#df9758] px-5 text-[13px] font-bold text-[#17110d] transition-all duration-200 hover:-translate-y-px hover:bg-[#eba064]"
           >
             Get Started
-          </a>
+          </button>
         </div>
 
         {/* Mobile Menu Button */}
@@ -149,18 +163,19 @@ const Navbar = () => {
         <div className="grid grid-cols-2 gap-2.5 px-5 py-5">
           <button
             type="button"
+            onClick={goToLogin}
             className="h-10 rounded-md border border-white/[0.09] bg-transparent text-[13px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.03]"
           >
             Log in
           </button>
 
-          <a
-            href="#cta"
-            onClick={closeMenu}
-            className="flex h-10 items-center justify-center rounded-md bg-[#df9758] text-[13px] font-bold text-[#17110d] transition-colors hover:bg-[#eba064]"
+          <button
+            type="button"
+            onClick={goToRegister}
+            className="h-10 rounded-md bg-[#df9758] text-[13px] font-bold text-[#17110d] transition-colors hover:bg-[#eba064]"
           >
             Get Started
-          </a>
+          </button>
         </div>
       </div>
     </header>
