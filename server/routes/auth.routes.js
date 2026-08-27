@@ -2,11 +2,19 @@ const express = require("express");
 
 const router = express.Router();
 
-const { register, login } = require("../controllers/auth.controller");
+const {
+  register,
+  login,
+  githubLogin,
+  githubCallback,
+} = require("../controllers/auth.controller");
 
 const validate = require("../middleware/validate");
 
-const { registerSchema, loginSchema } = require("../validators/auth.validator");
+const {
+  registerSchema,
+  loginSchema,
+} = require("../validators/auth.validator");
 
 router.post(
   "/register",
@@ -20,5 +28,14 @@ router.post(
   login
 );
 
+router.get(
+  "/github",
+  githubLogin
+);
+
+router.get(
+  "/github/callback",
+  githubCallback
+);
 
 module.exports = router;

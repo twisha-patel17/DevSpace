@@ -1,6 +1,7 @@
 const {
   registerUser,
   loginUser,
+  loginWithGithub,
 } = require("../services/auth.service");
 
 const register = async (req, res) => {
@@ -60,7 +61,11 @@ const login = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
 
-    if (error.message === "Invalid email or password") {
+    if (
+      error.message === "Invalid email or password" ||
+      error.message ===
+        "This account uses GitHub login. Please continue with GitHub."
+    ) {
       return res.status(401).json({
         message: error.message,
       });
@@ -72,7 +77,87 @@ const login = async (req, res) => {
   }
 };
 
+const githubLogin = (req, res) => {
+  const githubAuthUrl = new URL(
+    "https://github.com/login/oauth/authorize"
+  );
+
+  githubAuthUrl.searchParams.set(
+    "client_id",
+    process.env.GITHUB_CLIENT_ID
+  );
+
+  githubAuthUrl.searchParams.set(
+    "redirect_uri",
+    process.env.GITHUB_CALLBACK_URL
+  );
+
+  githubAuthUrl.searchParams.set(
+    "scope",
+    "read:user user:email"
+  );
+
+  res.redirect(githubAuthUrl.toString());
+};
+const githubCallback = async (req, res) => {
+  try {
+    const { code, error } = req.query;
+
+    if (error) {
+      console.error("GitHub OAuth error:", error);
+
+      return res.redirect(
+        `${process.env.CLIENT_URL}/login?error=github_denied`
+      );
+    }
+
+    if (!code) {
+      return res.redirect(
+        `${process.env.CLIENT_URL}/login?error=github_failed`
+      );
+    }
+
+    const result = await loginWithGithub(code);
+
+    const params = new URLSearchParams({
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: JSON.stringify(result.user),
+    });
+
+    res.redirect(
+      `${process.env.CLIENT_URL}/oauth/callback?${params.toString()}`
+    );
+  } catch (error) {
+    console.error("GitHub callback error:", error);
+
+    if (
+      error.message ===
+      "An account with this email already exists. Please sign in with your password."
+    ) {
+      return res.redirect(
+        `${process.env.CLIENT_URL}/login?error=account_exists`
+      );
+    }
+
+    if (
+      error.message ===
+      "No verified email address found on your GitHub account"
+    ) {
+      return res.redirect(
+        `${process.env.CLIENT_URL}/login?error=no_verified_email`
+      );
+    }
+
+    return res.redirect(
+      `${process.env.CLIENT_URL}/login?error=github_failed`
+    );
+  }
+};
+
 module.exports = {
   register,
   login,
+  githubLogin,
+  githubCallback,
 };

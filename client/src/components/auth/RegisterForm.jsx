@@ -24,9 +24,6 @@ const RegisterForm = ({ onSwitch }) => {
 
   const [errors, setErrors] = useState({});
 
-  const passwordRegex =
-    /^(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
-
   const registerMutation = useMutation({
     mutationFn: registerUser,
 
@@ -69,7 +66,6 @@ const RegisterForm = ({ onSwitch }) => {
   const validateForm = () => {
     const newErrors = {};
 
-    // Username
     if (!formData.username.trim()) {
       newErrors.username = "Username is required";
     } else if (formData.username.trim().length < 3) {
@@ -77,10 +73,9 @@ const RegisterForm = ({ onSwitch }) => {
         "Username must be at least 3 characters";
     } else if (formData.username.trim().length > 30) {
       newErrors.username =
-        "Username cannot exceed 30 characters";
+        "Username must be at most 30 characters";
     }
 
-    // Email
     if (!formData.email.trim()) {
       newErrors.email = "Email is required";
     } else if (
@@ -89,15 +84,15 @@ const RegisterForm = ({ onSwitch }) => {
       newErrors.email = "Enter a valid email address";
     }
 
-    // Password
     if (!formData.password) {
       newErrors.password = "Password is required";
-    } else if (!passwordRegex.test(formData.password)) {
+    } else if (formData.password.length < 6) {
       newErrors.password =
-        "Password must be 8+ characters with a number and symbol";
+        "Password must be at least 6 characters";
+    } else if (formData.password.length > 100) {
+      newErrors.password = "Password is too long";
     }
 
-    // Confirm password
     if (!formData.confirmPassword) {
       newErrors.confirmPassword =
         "Please confirm your password";
@@ -133,12 +128,18 @@ const RegisterForm = ({ onSwitch }) => {
     navigate("/");
   };
 
+  const handleGithubRegister = () => {
+    window.location.href = `${
+      import.meta.env.VITE_API_URL
+    }/api/auth/github`;
+  };
+
   const isLoading = registerMutation.isPending;
 
   return (
     <div className="w-full max-w-md">
-      {/* Header */}
-      <div className="mb-7">
+    
+      <div className="mb-8">
         <div className="mb-5 flex justify-end">
           <button
             type="button"
@@ -155,16 +156,16 @@ const RegisterForm = ({ onSwitch }) => {
         </h1>
 
         <p className="mt-2 text-sm text-gray-500">
-          Start building in a shared workspace in under a minute.
+          Start building and collaborating with your team.
         </p>
       </div>
 
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="space-y-4"
+        className="space-y-5"
       >
-        {/* Username */}
+      
         <div>
           <label
             htmlFor="username"
@@ -179,7 +180,7 @@ const RegisterForm = ({ onSwitch }) => {
             type="text"
             value={formData.username}
             onChange={handleChange}
-            placeholder="tishu_dev"
+            placeholder="yourusername"
             autoComplete="username"
             disabled={isLoading}
             className={`h-10 w-full rounded-lg border bg-[#151518] px-4 text-sm text-white outline-none placeholder:text-gray-600 transition ${
@@ -196,7 +197,6 @@ const RegisterForm = ({ onSwitch }) => {
           )}
         </div>
 
-        {/* Email */}
         <div>
           <label
             htmlFor="email"
@@ -228,7 +228,6 @@ const RegisterForm = ({ onSwitch }) => {
           )}
         </div>
 
-        {/* Password */}
         <div>
           <label
             htmlFor="password"
@@ -244,7 +243,7 @@ const RegisterForm = ({ onSwitch }) => {
               type={showPassword ? "text" : "password"}
               value={formData.password}
               onChange={handleChange}
-              placeholder="Create a password"
+              placeholder="••••••••"
               autoComplete="new-password"
               disabled={isLoading}
               className={`h-10 w-full rounded-lg border bg-[#151518] px-4 pr-12 text-sm text-white outline-none placeholder:text-gray-600 transition ${
@@ -275,24 +274,19 @@ const RegisterForm = ({ onSwitch }) => {
             </button>
           </div>
 
-          {errors.password ? (
+          {errors.password && (
             <p className="mt-1.5 text-xs text-red-400">
               {errors.password}
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] text-gray-600">
-              Use 8+ characters with a number and symbol
             </p>
           )}
         </div>
 
-        {/* Confirm Password */}
         <div>
           <label
             htmlFor="confirmPassword"
             className="mb-2 block text-sm text-gray-400"
           >
-            Confirm password
+            Confirm Password
           </label>
 
           <div className="relative">
@@ -304,7 +298,7 @@ const RegisterForm = ({ onSwitch }) => {
               }
               value={formData.confirmPassword}
               onChange={handleChange}
-              placeholder="Repeat your password"
+              placeholder="••••••••"
               autoComplete="new-password"
               disabled={isLoading}
               className={`h-10 w-full rounded-lg border bg-[#151518] px-4 pr-12 text-sm text-white outline-none placeholder:text-gray-600 transition ${
@@ -342,7 +336,6 @@ const RegisterForm = ({ onSwitch }) => {
           )}
         </div>
 
-        {/* Server Error */}
         {errors.server && (
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
             <p className="text-sm text-red-400">
@@ -351,7 +344,6 @@ const RegisterForm = ({ onSwitch }) => {
           </div>
         )}
 
-        {/* Create Account */}
         <button
           type="submit"
           disabled={isLoading}
@@ -363,8 +355,7 @@ const RegisterForm = ({ onSwitch }) => {
         </button>
       </form>
 
-      {/* Divider */}
-      <div className="my-6 flex items-center gap-4">
+      <div className="my-7 flex items-center gap-4">
         <div className="h-px flex-1 bg-[#222225]" />
 
         <span className="text-xs text-gray-600">
@@ -374,18 +365,24 @@ const RegisterForm = ({ onSwitch }) => {
         <div className="h-px flex-1 bg-[#222225]" />
       </div>
 
-      {/* Google */}
       <button
         type="button"
+        onClick={handleGithubRegister}
         disabled={isLoading}
-        className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] text-sm font-medium text-gray-300 transition hover:bg-[#151518] disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] text-sm font-medium text-gray-300 transition hover:bg-[#151518] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className="font-bold text-red-500">G</span>
-        Continue with Google
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5 fill-current"
+          aria-hidden="true"
+        >
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.42-1.305.763-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22 0 0-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23a11.5 11.5 0 0 1 3.003-.404c1.02.005 2.045.138 3.003.404 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.21 0 1.595-.015 2.875-.015 3.265 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12Z" />
+        </svg>
+
+        Continue with GitHub
       </button>
 
-      {/* Login */}
-      <p className="mt-6 text-center text-sm text-gray-500">
+      <p className="mt-7 text-center text-sm text-gray-500">
         Already have an account?{" "}
         <button
           type="button"

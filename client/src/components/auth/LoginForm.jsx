@@ -26,8 +26,19 @@ const LoginForm = ({ onSwitch }) => {
     onSuccess: (data) => {
       console.log("Login successful:", data);
 
-      // Adjust these names if your backend response uses different names
       setAuth(data.user, data.accessToken);
+
+      if (data.refreshToken) {
+        localStorage.setItem(
+          "refreshToken",
+          data.refreshToken
+        );
+      }
+      if (rememberMe) {
+        localStorage.setItem("rememberMe", "true");
+      } else {
+        localStorage.removeItem("rememberMe");
+      }
 
       navigate("/dashboard");
     },
@@ -96,7 +107,6 @@ const LoginForm = ({ onSwitch }) => {
     loginMutation.mutate({
       email: formData.email.trim(),
       password: formData.password,
-      rememberMe,
     });
   };
 
@@ -104,17 +114,26 @@ const LoginForm = ({ onSwitch }) => {
     navigate("/");
   };
 
+  const handleGithubLogin = () => {
+    const apiUrl =
+      import.meta.env.VITE_API_URL ||
+      "http://localhost:5000";
+
+    window.location.href = `${apiUrl}/api/auth/github`;
+  };
+
   const isLoading = loginMutation.isPending;
 
   return (
     <div className="w-full max-w-md">
-      {/* Header */}
+    
       <div className="mb-8">
         <div className="mb-5 flex justify-end">
           <button
             type="button"
             onClick={handleCancel}
-            className="text-sm text-gray-500 transition-colors hover:text-gray-200"
+            disabled={isLoading}
+            className="text-sm text-gray-500 transition-colors hover:text-gray-200 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -134,7 +153,6 @@ const LoginForm = ({ onSwitch }) => {
         noValidate
         className="space-y-5"
       >
-        {/* Email */}
         <div>
           <label
             htmlFor="email"
@@ -166,7 +184,6 @@ const LoginForm = ({ onSwitch }) => {
           )}
         </div>
 
-        {/* Password */}
         <div>
           <label
             htmlFor="password"
@@ -197,12 +214,13 @@ const LoginForm = ({ onSwitch }) => {
               onClick={() =>
                 setShowPassword((prev) => !prev)
               }
+              disabled={isLoading}
               aria-label={
                 showPassword
                   ? "Hide password"
                   : "Show password"
               }
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-300 disabled:cursor-not-allowed"
             >
               {showPassword ? (
                 <FiEyeOff className="h-5 w-5" />
@@ -219,7 +237,6 @@ const LoginForm = ({ onSwitch }) => {
           )}
         </div>
 
-        {/* Server Error */}
         {errors.server && (
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
             <p className="text-sm text-red-400">
@@ -228,7 +245,6 @@ const LoginForm = ({ onSwitch }) => {
           </div>
         )}
 
-        {/* Remember me */}
         <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-500">
           <input
             type="checkbox"
@@ -243,7 +259,6 @@ const LoginForm = ({ onSwitch }) => {
           Remember me
         </label>
 
-        {/* Sign In */}
         <button
           type="submit"
           disabled={isLoading}
@@ -253,7 +268,6 @@ const LoginForm = ({ onSwitch }) => {
         </button>
       </form>
 
-      {/* Divider */}
       <div className="my-7 flex items-center gap-4">
         <div className="h-px flex-1 bg-[#222225]" />
 
@@ -264,14 +278,21 @@ const LoginForm = ({ onSwitch }) => {
         <div className="h-px flex-1 bg-[#222225]" />
       </div>
 
-      {/* Google */}
       <button
         type="button"
+        onClick={handleGithubLogin}
         disabled={isLoading}
-        className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] text-sm font-medium text-gray-300 transition hover:bg-[#151518] disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] text-sm font-medium text-gray-300 transition hover:bg-[#151518] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className="font-bold text-red-500">G</span>
-        Continue with Google
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5 fill-current"
+          aria-hidden="true"
+        >
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.42-1.305.763-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.21 0 1.595-.015 2.875-.015 3.265 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12Z" />
+        </svg>
+
+        Continue with GitHub
       </button>
 
       <p className="mt-7 text-center text-sm text-gray-500">
