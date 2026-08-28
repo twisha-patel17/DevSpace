@@ -1,10 +1,8 @@
 import {
   Search,
   Bell,
-  Plus,
   Menu,
   Command,
-  ChevronDown,
 } from "lucide-react";
 
 const Topbar = ({ onMenuClick }) => {
@@ -28,8 +26,10 @@ const Topbar = ({ onMenuClick }) => {
           lg:px-8
         "
       >
+        {/* ================= LEFT ================= */}
         <div className="flex min-w-0 items-center gap-3">
-       
+
+          {/* Mobile Menu */}
           <button
             type="button"
             onClick={onMenuClick}
@@ -52,16 +52,9 @@ const Topbar = ({ onMenuClick }) => {
             <Menu size={18} strokeWidth={1.8} />
           </button>
 
+          {/* Desktop Search */}
           <div className="relative hidden sm:block">
-            <div
-              className="
-                group relative
-                w-[280px]
-                md:w-[320px]
-                lg:w-[380px]
-              "
-            >
-             
+            <div className="group relative w-[280px] md:w-[320px] lg:w-[380px]">
               <Search
                 size={15}
                 strokeWidth={1.8}
@@ -89,9 +82,7 @@ const Topbar = ({ onMenuClick }) => {
                   outline-none
                   placeholder:text-zinc-600
                   transition-all duration-200
-
                   hover:border-white/[0.11]
-
                   focus:border-[#dc9458]/30
                   focus:bg-[#121315]
                   focus:ring-4
@@ -99,6 +90,7 @@ const Topbar = ({ onMenuClick }) => {
                 "
               />
 
+              {/* Command Shortcut */}
               <div
                 className="
                   pointer-events-none
@@ -120,6 +112,7 @@ const Topbar = ({ onMenuClick }) => {
             </div>
           </div>
 
+          {/* Mobile Logo */}
           <div className="flex items-center gap-2 sm:hidden">
             <div
               className="
@@ -130,7 +123,6 @@ const Topbar = ({ onMenuClick }) => {
                 text-[10px]
                 font-extrabold
                 text-[#17110d]
-                shadow-[0_0_20px_rgba(220,148,88,0.08)]
               "
             >
               D
@@ -149,8 +141,10 @@ const Topbar = ({ onMenuClick }) => {
           </div>
         </div>
 
+        {/* ================= RIGHT ================= */}
         <div className="flex shrink-0 items-center gap-2">
 
+          {/* Mobile Search */}
           <button
             type="button"
             aria-label="Search"
@@ -172,6 +166,7 @@ const Topbar = ({ onMenuClick }) => {
             <Search size={16} strokeWidth={1.8} />
           </button>
 
+          {/* Notifications */}
           <button
             type="button"
             aria-label="Notifications"
@@ -203,104 +198,6 @@ const Topbar = ({ onMenuClick }) => {
             />
           </button>
 
-          <button
-            type="button"
-            className="
-              hidden h-10
-              items-center gap-2
-              rounded-lg
-              bg-[#dc9458]
-              px-4
-              text-[12px]
-              font-semibold
-              text-[#17110d]
-              shadow-[0_4px_20px_rgba(220,148,88,0.08)]
-              transition-all duration-200
-
-              hover:bg-[#e5a067]
-              hover:shadow-[0_5px_25px_rgba(220,148,88,0.13)]
-              active:translate-y-px
-
-              md:flex
-            "
-          >
-            <Plus size={14} strokeWidth={2.5} />
-
-            <span>Create Workspace</span>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Create workspace"
-            className="
-              flex h-10 w-10
-              items-center justify-center
-              rounded-lg
-              border border-[#dc9458]/20
-              bg-[#dc9458]/10
-              text-[#dc9458]
-              transition-all duration-200
-              hover:bg-[#dc9458]/15
-              active:scale-95
-              md:hidden
-            "
-          >
-            <Plus size={17} strokeWidth={2} />
-          </button>
-
-          <div className="mx-1 hidden h-7 w-px bg-white/[0.07] sm:block" />
-
-          <button
-            type="button"
-            className="
-              group
-              flex items-center gap-2
-              rounded-lg
-              p-1
-              transition-colors
-              hover:bg-white/[0.035]
-            "
-          >
- 
-            <span
-              className="
-                flex h-9 w-9
-                items-center justify-center
-                rounded-full
-                border border-[#dc9458]/20
-                bg-gradient-to-br
-                from-[#e4a06a]
-                to-[#c8783f]
-                text-[10px]
-                font-bold
-                text-[#17110d]
-                shadow-[0_0_18px_rgba(220,148,88,0.08)]
-              "
-            >
-              TP
-            </span>
-
-            <div className="hidden text-left lg:block">
-              <p className="text-[11px] font-medium leading-tight text-zinc-300">
-                Twisha
-              </p>
-
-              <p className="mt-0.5 text-[9px] leading-tight text-zinc-600">
-                Free plan
-              </p>
-            </div>
-
-            <ChevronDown
-              size={13}
-              className="
-                mr-1 hidden
-                text-zinc-600
-                transition-transform
-                group-hover:text-zinc-400
-                lg:block
-              "
-            />
-          </button>
         </div>
       </div>
     </header>

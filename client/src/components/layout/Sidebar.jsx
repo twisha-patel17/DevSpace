@@ -11,7 +11,6 @@ import {
   LogOut,
   X,
   ChevronRight,
-  Sparkles,
 } from "lucide-react";
 
 const navigation = [
@@ -71,7 +70,7 @@ const navigation = [
 const Sidebar = ({ open, onClose }) => {
   return (
     <>
-      
+      {/* Mobile Overlay */}
       <div
         onClick={onClose}
         className={`
@@ -87,6 +86,7 @@ const Sidebar = ({ open, onClose }) => {
         `}
       />
 
+      {/* Sidebar */}
       <aside
         className={`
           fixed inset-y-0 left-0 z-50
@@ -99,7 +99,7 @@ const Sidebar = ({ open, onClose }) => {
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-  
+        {/* Logo */}
         <div className="flex h-[76px] shrink-0 items-center border-b border-white/[0.06] px-5">
           <NavLink
             to="/dashboard"
@@ -132,6 +132,7 @@ const Sidebar = ({ open, onClose }) => {
             </div>
           </NavLink>
 
+          {/* Mobile Close */}
           <button
             type="button"
             onClick={onClose}
@@ -151,10 +152,14 @@ const Sidebar = ({ open, onClose }) => {
           </button>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
           {navigation.map((section) => (
-            <div key={section.title} className="mb-7 last:mb-0">
-
+            <div
+              key={section.title}
+              className="mb-7 last:mb-0"
+            >
+              {/* Section Title */}
               <div className="mb-2 flex items-center px-3">
                 <span className="text-[9px] font-semibold tracking-[0.18em] text-zinc-600">
                   {section.title}
@@ -163,6 +168,7 @@ const Sidebar = ({ open, onClose }) => {
                 <div className="ml-3 h-px flex-1 bg-white/[0.035]" />
               </div>
 
+              {/* Navigation Items */}
               <div className="space-y-1">
                 {section.items.map((item) => {
                   const Icon = item.icon;
@@ -186,7 +192,7 @@ const Sidebar = ({ open, onClose }) => {
                     >
                       {({ isActive }) => (
                         <>
-                    
+                          {/* Active Indicator */}
                           <span
                             className={`
                               absolute left-0 top-1/2
@@ -203,6 +209,7 @@ const Sidebar = ({ open, onClose }) => {
                             `}
                           />
 
+                          {/* Icon */}
                           <span
                             className={`
                               flex h-7 w-7 shrink-0
@@ -222,10 +229,12 @@ const Sidebar = ({ open, onClose }) => {
                             />
                           </span>
 
+                          {/* Label */}
                           <span className="min-w-0 flex-1 truncate">
                             {item.label}
                           </span>
 
+                          {/* Count */}
                           {item.count && (
                             <span
                               className={`
@@ -244,6 +253,7 @@ const Sidebar = ({ open, onClose }) => {
                             </span>
                           )}
 
+                          {/* Active Arrow */}
                           {isActive && (
                             <ChevronRight
                               size={13}
@@ -260,6 +270,7 @@ const Sidebar = ({ open, onClose }) => {
           ))}
         </nav>
 
+        {/* New Workspace */}
         <div className="px-3 pb-3">
           <NavLink
             to="/projects/new"
@@ -294,49 +305,10 @@ const Sidebar = ({ open, onClose }) => {
           </NavLink>
         </div>
 
-        <div className="px-3 pb-3">
-          <div
-            className="
-              relative overflow-hidden
-              rounded-lg
-              border border-white/[0.06]
-              bg-[#111214]
-              p-3
-            "
-          >
-            <div className="flex items-start gap-2.5">
-              <div
-                className="
-                  flex h-7 w-7 shrink-0
-                  items-center justify-center
-                  rounded-md
-                  bg-[#dc9458]/10
-                  text-[#dc9458]
-                "
-              >
-                <Sparkles size={13} />
-              </div>
-
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-zinc-300">
-                  Free Workspace
-                </p>
-
-                <p className="mt-0.5 text-[9px] leading-4 text-zinc-600">
-                  3 of 5 projects used
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.05]">
-              <div className="h-full w-[60%] rounded-full bg-[#dc9458]" />
-            </div>
-          </div>
-        </div>
-
+        {/* User Section */}
         <div className="border-t border-white/[0.06] p-3">
           <div className="group flex items-center gap-3 rounded-lg p-2 transition hover:bg-white/[0.025]">
-          
+            {/* Avatar */}
             <NavLink
               to="/profile"
               onClick={onClose}
@@ -365,6 +337,7 @@ const Sidebar = ({ open, onClose }) => {
               />
             </NavLink>
 
+            {/* User Info */}
             <NavLink
               to="/profile"
               onClick={onClose}
@@ -380,6 +353,7 @@ const Sidebar = ({ open, onClose }) => {
               </p>
             </NavLink>
 
+            {/* Logout */}
             <button
               type="button"
               title="Log out"
