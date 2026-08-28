@@ -304,8 +304,6 @@ const CreateWorkspaceModal = ({
                 />
               </div>
 
-              {/* Template */}
-
               <div>
                 <label
                   className="
@@ -386,9 +384,6 @@ const CreateWorkspaceModal = ({
                   })}
                 </div>
               </div>
-
-              {/* Visibility */}
-
               <div>
                 <label
                   className="
@@ -402,9 +397,6 @@ const CreateWorkspaceModal = ({
                 </label>
 
                 <div className="grid gap-2 sm:grid-cols-2">
-
-                  {/* PRIVATE */}
-
                   <button
                     type="button"
                     onClick={() =>
@@ -568,8 +560,6 @@ const CreateWorkspaceModal = ({
 
             </div>
           </div>
-
-          {/* ================= FOOTER ================= */}
 
           <div
             className="

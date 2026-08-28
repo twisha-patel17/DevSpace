@@ -23,13 +23,13 @@ const navigation = [
         icon: LayoutDashboard,
       },
       {
-        label: "Projects",
-        path: "/projects",
+        label: "Workspaces",
+        path: "/workspaces",
         icon: FolderKanban,
       },
       {
         label: "Shared with me",
-        path: "/projects?shared=true",
+        path: "/workspaces?shared=true",
         icon: Users,
         count: 3,
       },
@@ -40,7 +40,7 @@ const navigation = [
     items: [
       {
         label: "Recent",
-        path: "/projects?sort=recent",
+        path: "/workspaces?sort=recent",
         icon: Clock3,
       },
       {
@@ -67,15 +67,19 @@ const navigation = [
   },
 ];
 
-const Sidebar = ({ open, onClose }) => {
+const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
   return (
     <>
-      {/* Mobile Overlay */}
+      {/* =====================================================
+          MOBILE OVERLAY
+      ===================================================== */}
+
       <div
         onClick={onClose}
         className={`
           fixed inset-0 z-40
-          bg-black/70 backdrop-blur-sm
+          bg-black/70
+          backdrop-blur-sm
           transition-opacity duration-300
           lg:hidden
           ${
@@ -86,7 +90,10 @@ const Sidebar = ({ open, onClose }) => {
         `}
       />
 
-      {/* Sidebar */}
+      {/* =====================================================
+          SIDEBAR
+      ===================================================== */}
+
       <aside
         className={`
           fixed inset-y-0 left-0 z-50
@@ -95,11 +102,15 @@ const Sidebar = ({ open, onClose }) => {
           bg-[#0d0e10]
           shadow-[20px_0_60px_rgba(0,0,0,0.25)]
           transition-transform duration-300 ease-out
-          lg:translate-x-0 lg:shadow-none
+          lg:translate-x-0
+          lg:shadow-none
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* Logo */}
+        {/* ===================================================
+            LOGO
+        =================================================== */}
+
         <div className="flex h-[76px] shrink-0 items-center border-b border-white/[0.06] px-5">
           <NavLink
             to="/dashboard"
@@ -108,10 +119,12 @@ const Sidebar = ({ open, onClose }) => {
           >
             <span
               className="
-                flex h-8 w-8 items-center justify-center
+                flex h-8 w-8
+                items-center justify-center
                 rounded-[9px]
                 bg-[#dc9458]
-                text-[12px] font-black
+                text-[12px]
+                font-black
                 text-[#17110d]
                 shadow-[0_0_25px_rgba(220,148,88,0.12)]
                 transition-transform duration-200
@@ -133,12 +146,15 @@ const Sidebar = ({ open, onClose }) => {
           </NavLink>
 
           {/* Mobile Close */}
+
           <button
             type="button"
             onClick={onClose}
             aria-label="Close sidebar"
             className="
-              ml-auto flex h-8 w-8 items-center justify-center
+              ml-auto
+              flex h-8 w-8
+              items-center justify-center
               rounded-lg
               border border-white/[0.06]
               text-zinc-600
@@ -152,14 +168,18 @@ const Sidebar = ({ open, onClose }) => {
           </button>
         </div>
 
-        {/* Navigation */}
+        {/* ===================================================
+            NAVIGATION
+        =================================================== */}
+
         <nav className="flex-1 overflow-y-auto px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
           {navigation.map((section) => (
             <div
               key={section.title}
               className="mb-7 last:mb-0"
             >
-              {/* Section Title */}
+              {/* Section title */}
+
               <div className="mb-2 flex items-center px-3">
                 <span className="text-[9px] font-semibold tracking-[0.18em] text-zinc-600">
                   {section.title}
@@ -168,7 +188,8 @@ const Sidebar = ({ open, onClose }) => {
                 <div className="ml-3 h-px flex-1 bg-white/[0.035]" />
               </div>
 
-              {/* Navigation Items */}
+              {/* Navigation items */}
+
               <div className="space-y-1">
                 {section.items.map((item) => {
                   const Icon = item.icon;
@@ -179,9 +200,11 @@ const Sidebar = ({ open, onClose }) => {
                       to={item.path}
                       onClick={onClose}
                       className={({ isActive }) => `
-                        group relative flex h-10 items-center
-                        gap-3 rounded-lg px-3
-                        text-[12px] font-medium
+                        group relative flex h-10
+                        items-center gap-3
+                        rounded-lg px-3
+                        text-[12px]
+                        font-medium
                         transition-all duration-200
                         ${
                           isActive
@@ -192,7 +215,8 @@ const Sidebar = ({ open, onClose }) => {
                     >
                       {({ isActive }) => (
                         <>
-                          {/* Active Indicator */}
+                          {/* Active indicator */}
+
                           <span
                             className={`
                               absolute left-0 top-1/2
@@ -210,9 +234,11 @@ const Sidebar = ({ open, onClose }) => {
                           />
 
                           {/* Icon */}
+
                           <span
                             className={`
-                              flex h-7 w-7 shrink-0
+                              flex h-7 w-7
+                              shrink-0
                               items-center justify-center
                               rounded-md
                               transition-all duration-200
@@ -230,18 +256,23 @@ const Sidebar = ({ open, onClose }) => {
                           </span>
 
                           {/* Label */}
+
                           <span className="min-w-0 flex-1 truncate">
                             {item.label}
                           </span>
 
                           {/* Count */}
+
                           {item.count && (
                             <span
                               className={`
-                                flex h-5 min-w-5 items-center
-                                justify-center rounded-full
+                                flex h-5 min-w-5
+                                items-center
+                                justify-center
+                                rounded-full
                                 px-1.5
-                                text-[9px] font-semibold
+                                text-[9px]
+                                font-semibold
                                 ${
                                   isActive
                                     ? "bg-[#dc9458]/15 text-[#dc9458]"
@@ -253,7 +284,8 @@ const Sidebar = ({ open, onClose }) => {
                             </span>
                           )}
 
-                          {/* Active Arrow */}
+                          {/* Active arrow */}
+
                           {isActive && (
                             <ChevronRight
                               size={13}
@@ -270,22 +302,30 @@ const Sidebar = ({ open, onClose }) => {
           ))}
         </nav>
 
-        {/* New Workspace */}
+        {/* ===================================================
+            NEW WORKSPACE
+        =================================================== */}
+
         <div className="px-3 pb-3">
-          <NavLink
-            to="/projects/new"
-            onClick={onClose}
+          <button
+            type="button"
+            onClick={onCreateWorkspace}
             className="
-              group relative flex h-10 w-full
-              items-center justify-center gap-2
-              overflow-hidden rounded-lg
+              group relative
+              flex h-10 w-full
+              items-center justify-center
+              gap-2
+              overflow-hidden
+              rounded-lg
               border border-[#dc9458]/20
               bg-[#dc9458]/[0.07]
-              text-[11px] font-semibold
+              text-[11px]
+              font-semibold
               text-[#dc9458]
               transition-all duration-200
               hover:border-[#dc9458]/40
               hover:bg-[#dc9458]/[0.12]
+              active:scale-[0.98]
             "
           >
             <span
@@ -293,7 +333,9 @@ const Sidebar = ({ open, onClose }) => {
                 absolute inset-0
                 -translate-x-full
                 bg-gradient-to-r
-                from-transparent via-white/[0.04] to-transparent
+                from-transparent
+                via-white/[0.04]
+                to-transparent
                 transition-transform duration-500
                 group-hover:translate-x-full
               "
@@ -302,13 +344,18 @@ const Sidebar = ({ open, onClose }) => {
             <Plus size={15} strokeWidth={2.2} />
 
             <span>New Workspace</span>
-          </NavLink>
+          </button>
         </div>
 
-        {/* User Section */}
+        {/* ===================================================
+            USER SECTION
+        =================================================== */}
+
         <div className="border-t border-white/[0.06] p-3">
           <div className="group flex items-center gap-3 rounded-lg p-2 transition hover:bg-white/[0.025]">
+
             {/* Avatar */}
+
             <NavLink
               to="/profile"
               onClick={onClose}
@@ -316,10 +363,12 @@ const Sidebar = ({ open, onClose }) => {
             >
               <div
                 className="
-                  flex h-9 w-9 items-center justify-center
+                  flex h-9 w-9
+                  items-center justify-center
                   rounded-full
                   bg-[#dc9458]
-                  text-[10px] font-bold
+                  text-[10px]
+                  font-bold
                   text-[#17110d]
                 "
               >
@@ -338,6 +387,7 @@ const Sidebar = ({ open, onClose }) => {
             </NavLink>
 
             {/* User Info */}
+
             <NavLink
               to="/profile"
               onClick={onClose}
@@ -354,11 +404,13 @@ const Sidebar = ({ open, onClose }) => {
             </NavLink>
 
             {/* Logout */}
+
             <button
               type="button"
               title="Log out"
               className="
-                flex h-8 w-8 shrink-0
+                flex h-8 w-8
+                shrink-0
                 items-center justify-center
                 rounded-md
                 border border-white/[0.06]
@@ -371,6 +423,7 @@ const Sidebar = ({ open, onClose }) => {
             >
               <LogOut size={13} />
             </button>
+
           </div>
         </div>
       </aside>
