@@ -7,9 +7,16 @@ import CreateWorkspaceModal from "../../components/CreateWorkspaceModal";
 
 const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
   const [createWorkspaceOpen, setCreateWorkspaceOpen] =
     useState(false);
+
+  const openCreateWorkspace = () => {
+    setCreateWorkspaceOpen(true);
+  };
+
+  const closeCreateWorkspace = () => {
+    setCreateWorkspaceOpen(false);
+  };
 
   const handleCreateWorkspace = (workspaceData) => {
     console.log("New workspace:", workspaceData);
@@ -23,12 +30,10 @@ const AppLayout = () => {
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onCreateWorkspace={() =>
-          setCreateWorkspaceOpen(true)
-        }
+        onCreateWorkspace={openCreateWorkspace}
       />
-
       <div className="lg:pl-[250px]">
+
         <Topbar
           onMenuClick={() => setSidebarOpen(true)}
         />
@@ -36,8 +41,7 @@ const AppLayout = () => {
         <main>
           <Outlet
             context={{
-              openCreateWorkspace: () =>
-                setCreateWorkspaceOpen(true),
+              onCreateWorkspace: openCreateWorkspace,
             }}
           />
         </main>
@@ -46,7 +50,7 @@ const AppLayout = () => {
 
       <CreateWorkspaceModal
         isOpen={createWorkspaceOpen}
-        onClose={() => setCreateWorkspaceOpen(false)}
+        onClose={closeCreateWorkspace}
         onCreate={handleCreateWorkspace}
       />
 

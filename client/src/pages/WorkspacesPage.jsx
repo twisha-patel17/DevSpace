@@ -1,5 +1,15 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import {
+  useNavigate,
+  useOutletContext,
+} from "react-router-dom";
+
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+
 import {
   Search,
   Plus,
@@ -17,80 +27,8 @@ import {
   Check,
 } from "lucide-react";
 
-const initialWorkspaces = [
-  {
-    id: "portfolio",
-    name: "Portfolio",
-    description: "Personal portfolio website",
-    language: "JavaScript",
-    languageShort: "JS",
-    languageClass: "bg-[#302f1c] text-[#e5c82d]",
-    collaborators: 3,
-    status: "Active",
-    lastOpened: "12m ago",
-    updatedAt: "Today",
-  },
-  {
-    id: "dsa-practice",
-    name: "DSA Practice",
-    description: "Algorithms and data structures",
-    language: "C++",
-    languageShort: "C++",
-    languageClass: "bg-[#1c2638] text-[#72a4e2]",
-    collaborators: 1,
-    status: "Active",
-    lastOpened: "Yesterday",
-    updatedAt: "Yesterday",
-  },
-  {
-    id: "quest-api",
-    name: "Quest API",
-    description: "Backend API development",
-    language: "Python",
-    languageShort: "PY",
-    languageClass: "bg-[#1c3029] text-[#65bc8d]",
-    collaborators: 2,
-    status: "Offline",
-    lastOpened: "3 days ago",
-    updatedAt: "This week",
-  },
-  {
-    id: "devspace",
-    name: "DevSpace",
-    description: "Real-time collaborative coding platform",
-    language: "React",
-    languageShort: "RE",
-    languageClass: "bg-[#202c30] text-[#63c5d8]",
-    collaborators: 2,
-    status: "Active",
-    lastOpened: "5 days ago",
-    updatedAt: "This week",
-  },
-  {
-    id: "hackathon",
-    name: "Hackathon Sprint",
-    description: "Team project for upcoming hackathon",
-    language: "JavaScript",
-    languageShort: "JS",
-    languageClass: "bg-[#302f1c] text-[#e5c82d]",
-    collaborators: 4,
-    status: "Active",
-    lastOpened: "1 week ago",
-    updatedAt: "This month",
-  },
-  {
-    id: "api-playground",
-    name: "API Playground",
-    description: "Testing REST APIs and backend ideas",
-    language: "Node.js",
-    languageShort: "JS",
-    languageClass: "bg-[#24301f] text-[#8bcf65]",
-    collaborators: 1,
-    status: "Offline",
-    lastOpened: "2 weeks ago",
-    updatedAt: "This month",
-  },
-];
+import api from "../api/axios";
+import useAuthStore from "../store/authStore";
 
 const AvatarStack = ({ count }) => {
   const avatars = ["TP", "RK", "PS", "AM"];
@@ -104,22 +42,24 @@ const AvatarStack = ({ count }) => {
 
   return (
     <div className="flex items-center">
-      {avatars.slice(0, Math.min(count, 4)).map((avatar, index) => (
-        <span
-          key={`${avatar}-${index}`}
-          className={`
-            flex h-6 w-6
-            items-center justify-center
-            rounded-full
-            border-2 border-[#111214]
-            text-[7px] font-bold
-            ${index !== 0 ? "-ml-1.5" : ""}
-            ${avatarStyles[index]}
-          `}
-        >
-          {avatar}
-        </span>
-      ))}
+      {avatars
+        .slice(0, Math.min(count, 4))
+        .map((avatar, index) => (
+          <span
+            key={`${avatar}-${index}`}
+            className={`
+              flex h-6 w-6
+              items-center justify-center
+              rounded-full
+              border-2 border-[#111214]
+              text-[7px] font-bold
+              ${index !== 0 ? "-ml-1.5" : ""}
+              ${avatarStyles[index]}
+            `}
+          >
+            {avatar}
+          </span>
+        ))}
 
       {count > 4 && (
         <span
@@ -141,6 +81,49 @@ const AvatarStack = ({ count }) => {
   );
 };
 
+const getLanguageStyle = (language = "") => {
+  const value = language.toLowerCase();
+
+  if (value.includes("javascript")) {
+    return "bg-[#302f1c] text-[#e5c82d]";
+  }
+
+  if (value.includes("typescript")) {
+    return "bg-[#1c2638] text-[#72a4e2]";
+  }
+
+  if (value.includes("react")) {
+    return "bg-[#202c30] text-[#63c5d8]";
+  }
+
+  if (value.includes("python")) {
+    return "bg-[#1c3029] text-[#65bc8d]";
+  }
+
+  if (value.includes("c++")) {
+    return "bg-[#25203a] text-[#a67adb]";
+  }
+
+  if (value.includes("node")) {
+    return "bg-[#24301f] text-[#8bcf65]";
+  }
+
+  return "bg-[#252629] text-zinc-300";
+};
+
+const getLanguageShort = (language = "") => {
+  const value = language.toLowerCase();
+
+  if (value.includes("javascript")) return "JS";
+  if (value.includes("typescript")) return "TS";
+  if (value.includes("react")) return "RE";
+  if (value.includes("python")) return "PY";
+  if (value.includes("c++")) return "C++";
+  if (value.includes("node")) return "JS";
+
+  return language.slice(0, 2).toUpperCase() || "BL";
+};
+
 const WorkspaceMenu = ({
   workspace,
   onClose,
@@ -149,12 +132,12 @@ const WorkspaceMenu = ({
   const navigate = useNavigate();
 
   const handleOpen = () => {
-    navigate(`/workspaces/${workspace.id}`);
+    navigate(`/workspaces/${workspace._id}`);
     onClose();
   };
 
   const handleDelete = () => {
-    onDelete(workspace.id);
+    onDelete(workspace._id);
     onClose();
   };
 
@@ -171,6 +154,8 @@ const WorkspaceMenu = ({
       "
       onClick={(e) => e.stopPropagation()}
     >
+      {/* OPEN */}
+
       <button
         type="button"
         onClick={handleOpen}
@@ -184,25 +169,15 @@ const WorkspaceMenu = ({
           hover:text-white
         "
       >
-        <ExternalLink size={13} className="text-zinc-500" />
+        <ExternalLink
+          size={13}
+          className="text-zinc-500"
+        />
+
         Open
       </button>
 
-      <button
-        type="button"
-        className="
-          flex w-full items-center gap-2.5
-          px-3 py-2.5
-          text-left text-[11px]
-          text-zinc-300
-          transition-colors
-          hover:bg-white/[0.05]
-          hover:text-white
-        "
-      >
-        <Pencil size={13} className="text-zinc-500" />
-        Rename
-      </button>
+      {/* RENAME */}
 
       <button
         type="button"
@@ -216,11 +191,39 @@ const WorkspaceMenu = ({
           hover:text-white
         "
       >
-        <Copy size={13} className="text-zinc-500" />
+        <Pencil
+          size={13}
+          className="text-zinc-500"
+        />
+
+        Rename
+      </button>
+
+      {/* DUPLICATE */}
+
+      <button
+        type="button"
+        className="
+          flex w-full items-center gap-2.5
+          px-3 py-2.5
+          text-left text-[11px]
+          text-zinc-300
+          transition-colors
+          hover:bg-white/[0.05]
+          hover:text-white
+        "
+      >
+        <Copy
+          size={13}
+          className="text-zinc-500"
+        />
+
         Duplicate
       </button>
 
       <div className="mx-2 border-t border-white/[0.06]" />
+
+      {/* DELETE */}
 
       <button
         type="button"
@@ -236,6 +239,7 @@ const WorkspaceMenu = ({
         "
       >
         <Trash2 size={13} />
+
         Delete
       </button>
     </div>
@@ -251,8 +255,30 @@ const WorkspaceCard = ({
 }) => {
   const navigate = useNavigate();
 
+  const language =
+    workspace.language ||
+    workspace.languageName ||
+    "Blank";
+
+  const languageShort =
+    workspace.languageShort ||
+    getLanguageShort(language);
+
+  const languageClass =
+    workspace.languageColor ||
+    getLanguageStyle(language);
+
+  const collaborators =
+    workspace.members?.length ||
+    workspace.collaborators ||
+    1;
+
+  const status =
+    workspace.status ||
+    "Active";
+
   const openWorkspace = () => {
-    navigate(`/workspaces/${workspace.id}`);
+    navigate(`/workspaces/${workspace._id}`);
   };
 
   return (
@@ -283,10 +309,10 @@ const WorkspaceCard = ({
             font-mono
             text-[9px]
             font-semibold
-            ${workspace.languageClass}
+            ${languageClass}
           `}
         >
-          {workspace.languageShort}
+          {languageShort}
         </div>
 
         <div className="relative">
@@ -342,7 +368,7 @@ const WorkspaceCard = ({
               shrink-0
               rounded-full
               ${
-                workspace.status === "Active"
+                status === "Active"
                   ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.35)]"
                   : "bg-zinc-700"
               }
@@ -359,7 +385,8 @@ const WorkspaceCard = ({
             text-zinc-600
           "
         >
-          {workspace.description}
+          {workspace.description ||
+            "No description"}
         </p>
       </div>
 
@@ -375,23 +402,30 @@ const WorkspaceCard = ({
           "
         >
           <div className="flex items-center gap-2">
-            <AvatarStack count={workspace.collaborators} />
+            <AvatarStack count={collaborators} />
 
             <span className="text-[10px] text-zinc-600">
-              {workspace.collaborators}{" "}
-              {workspace.collaborators === 1
+              {collaborators}{" "}
+              {collaborators === 1
                 ? "member"
                 : "members"}
             </span>
           </div>
 
-          <span className="flex items-center gap-1 text-[9px] text-zinc-700">
+          <span
+            className="
+              flex items-center gap-1
+              text-[9px] text-zinc-700
+            "
+          >
             <Clock3 size={11} />
-            {workspace.lastOpened}
+
+            {workspace.lastOpened ||
+              "Recently"}
           </span>
         </div>
 
-        {/* OPEN BUTTON */}
+        {/* OPEN */}
 
         <button
           type="button"
@@ -414,6 +448,7 @@ const WorkspaceCard = ({
           "
         >
           Open Workspace
+
           <ExternalLink size={12} />
         </button>
       </div>
@@ -422,60 +457,292 @@ const WorkspaceCard = ({
 };
 
 const WorkspacesPage = () => {
+  
+  const {
+    openCreateWorkspace,
+  } = useOutletContext();
 
-  const { onCreateWorkspace } = useOutletContext();
+  const queryClient =
+    useQueryClient();
 
-  const [workspaces, setWorkspaces] =
-    useState(initialWorkspaces);
+  const accessToken =
+    useAuthStore(
+      (state) => state.accessToken
+    );
 
-  const [search, setSearch] = useState("");
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filter, setFilter] = useState("All");
-  const [openMenu, setOpenMenu] = useState(null);
+  const [search, setSearch] =
+    useState("");
 
-  const filteredWorkspaces = useMemo(() => {
-    return workspaces.filter((workspace) => {
-      const searchValue = search.toLowerCase().trim();
+  const [filterOpen, setFilterOpen] =
+    useState(false);
 
-      const matchesSearch =
-        workspace.name
-          .toLowerCase()
-          .includes(searchValue) ||
-        workspace.description
-          .toLowerCase()
-          .includes(searchValue) ||
-        workspace.language
-          .toLowerCase()
-          .includes(searchValue);
+  const [filter, setFilter] =
+    useState("All");
 
-      const matchesFilter =
-        filter === "All" ||
-        workspace.status === filter ||
-        workspace.language === filter;
+  const [openMenu, setOpenMenu] =
+    useState(null);
 
-      return matchesSearch && matchesFilter;
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["workspaces"],
+
+    queryFn: async () => {
+      const response =
+        await api.get(
+          "/api/workspaces",
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+      return response.data.workspaces;
+    },
+
+    enabled: !!accessToken,
+  });
+
+  const workspaces = data || [];
+
+  const deleteMutation =
+    useMutation({
+      mutationFn: async (workspaceId) => {
+        await api.delete(
+          `/api/workspaces/${workspaceId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+      },
+
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: ["workspaces"],
+        });
+      },
+
+      onError: (error) => {
+        console.error(
+          "Delete workspace error:",
+          error
+        );
+      },
     });
-  }, [workspaces, search, filter]);
 
   const handleDelete = (id) => {
-    setWorkspaces((current) =>
-      current.filter(
-        (workspace) => workspace.id !== id
-      )
-    );
+    deleteMutation.mutate(id);
   };
 
-  const totalWorkspaces = workspaces.length;
+  const filteredWorkspaces =
+    useMemo(() => {
+      return workspaces.filter(
+        (workspace) => {
+          const searchValue =
+            search
+              .toLowerCase()
+              .trim();
 
-  const activeWorkspaces = workspaces.filter(
-    (workspace) => workspace.status === "Active"
-  ).length;
+          const name =
+            workspace.name ||
+            "";
 
-  const totalMembers = workspaces.reduce(
-    (total, workspace) =>
-      total + workspace.collaborators,
-    0
-  );
+          const description =
+            workspace.description ||
+            "";
+
+          const language =
+            workspace.language ||
+            workspace.languageName ||
+            "";
+
+          const matchesSearch =
+            name
+              .toLowerCase()
+              .includes(searchValue) ||
+            description
+              .toLowerCase()
+              .includes(searchValue) ||
+            language
+              .toLowerCase()
+              .includes(searchValue);
+
+          const status =
+            workspace.status ||
+            "Active";
+
+          const matchesFilter =
+            filter === "All" ||
+            status === filter ||
+            language === filter;
+
+          return (
+            matchesSearch &&
+            matchesFilter
+          );
+        }
+      );
+    }, [
+      workspaces,
+      search,
+      filter,
+    ]);
+
+  const totalWorkspaces =
+    workspaces.length;
+
+  const activeWorkspaces =
+    workspaces.filter(
+      (workspace) =>
+        (workspace.status ||
+          "Active") === "Active"
+    ).length;
+
+  const totalMembers =
+    workspaces.reduce(
+      (total, workspace) =>
+        total +
+        (workspace.members?.length ||
+          workspace.collaborators ||
+          1),
+      0
+    );
+
+  if (isLoading) {
+    return (
+      <main
+        className="
+          min-h-screen
+          bg-[#090a0b]
+          text-zinc-100
+        "
+      >
+        <div
+          className="
+            px-4 pb-14
+            pt-[100px]
+            sm:px-6
+            lg:px-8
+          "
+        >
+          <div className="mx-auto max-w-[1280px]">
+            <div className="mb-8">
+              <div className="h-3 w-28 animate-pulse rounded bg-white/[0.05]" />
+
+              <div className="mt-3 h-8 w-40 animate-pulse rounded bg-white/[0.05]" />
+
+              <div className="mt-2 h-4 w-72 animate-pulse rounded bg-white/[0.04]" />
+            </div>
+
+            <div
+              className="
+                grid
+                gap-3
+                sm:grid-cols-2
+                xl:grid-cols-3
+              "
+            >
+              {[1, 2, 3, 4, 5, 6].map(
+                (item) => (
+                  <div
+                    key={item}
+                    className="
+                      h-[220px]
+                      animate-pulse
+                      rounded-xl
+                      border border-white/[0.05]
+                      bg-[#111214]
+                    "
+                  />
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (isError) {
+    return (
+      <main
+        className="
+          min-h-screen
+          bg-[#090a0b]
+          text-zinc-100
+        "
+      >
+        <div
+          className="
+            flex min-h-screen
+            items-center
+            justify-center
+            px-6
+          "
+        >
+          <div className="text-center">
+            <div
+              className="
+                mx-auto flex h-11 w-11
+                items-center justify-center
+                rounded-xl
+                bg-red-500/[0.08]
+                text-red-400
+              "
+            >
+              !
+            </div>
+
+            <h2
+              className="
+                mt-4
+                text-[14px]
+                font-semibold
+                text-zinc-200
+              "
+            >
+              Failed to load workspaces
+            </h2>
+
+            <p
+              className="
+                mt-1
+                text-[10px]
+                text-zinc-600
+              "
+            >
+              {error?.response?.data?.message ||
+                "Something went wrong"}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                queryClient.invalidateQueries({
+                  queryKey: ["workspaces"],
+                })
+              }
+              className="
+                mt-4
+                text-[10px]
+                font-medium
+                text-[#dc9458]
+                hover:text-[#e5a067]
+              "
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
@@ -556,12 +823,11 @@ const WorkspacesPage = () => {
                 coding projects.
               </p>
             </div>
-
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onCreateWorkspace();
+                openCreateWorkspace();
               }}
               className="
                 flex h-10
@@ -588,7 +854,10 @@ const WorkspacesPage = () => {
                 size={14}
                 strokeWidth={2.5}
               />
-              <span>New Workspace</span>
+
+              <span>
+                New Workspace
+              </span>
             </button>
           </section>
 
@@ -601,8 +870,7 @@ const WorkspacesPage = () => {
               sm:grid-cols-3
             "
           >
-            {/* TOTAL */}
-
+            
             <div
               className="
                 rounded-xl
@@ -630,8 +898,6 @@ const WorkspacesPage = () => {
                 All workspaces
               </p>
             </div>
-
-            {/* ACTIVE */}
 
             <div
               className="
@@ -753,6 +1019,7 @@ const WorkspacesPage = () => {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+
                     setFilterOpen(
                       (current) => !current
                     );
@@ -765,6 +1032,7 @@ const WorkspacesPage = () => {
                     px-3.5
                     text-[11px]
                     transition-all duration-200
+
                     ${
                       filterOpen
                         ? "border-[#dc9458]/30 bg-[#151312] text-zinc-200 ring-4 ring-[#dc9458]/[0.04]"
@@ -802,7 +1070,7 @@ const WorkspacesPage = () => {
                   />
                 </button>
 
-                {/* FILTER DROPDOWN */}
+                {/* DROPDOWN */}
 
                 {filterOpen && (
                   <div
@@ -821,7 +1089,15 @@ const WorkspacesPage = () => {
                     }
                   >
                     <div className="px-2.5 pb-1.5 pt-1">
-                      <p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
+                      <p
+                        className="
+                          text-[8px]
+                          font-semibold
+                          uppercase
+                          tracking-[0.16em]
+                          text-zinc-700
+                        "
+                      >
                         Filter by
                       </p>
                     </div>
@@ -864,7 +1140,10 @@ const WorkspacesPage = () => {
                         key={option.value}
                         type="button"
                         onClick={() => {
-                          setFilter(option.value);
+                          setFilter(
+                            option.value
+                          );
+
                           setFilterOpen(false);
                         }}
                         className={`
@@ -875,16 +1154,21 @@ const WorkspacesPage = () => {
                           text-left
                           text-[10px]
                           transition-all duration-150
+
                           ${
-                            filter === option.value
+                            filter ===
+                            option.value
                               ? "bg-[#dc9458]/[0.10] text-[#dc9458]"
                               : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
                           }
                         `}
                       >
-                        <span>{option.label}</span>
+                        <span>
+                          {option.label}
+                        </span>
 
-                        {filter === option.value && (
+                        {filter ===
+                          option.value && (
                           <Check
                             size={12}
                             strokeWidth={2.5}
@@ -898,19 +1182,24 @@ const WorkspacesPage = () => {
               </div>
             </div>
 
+            {/* RESULT COUNT */}
+
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[10px] text-zinc-700">
                 {filteredWorkspaces.length}{" "}
-                {filteredWorkspaces.length === 1
+                {filteredWorkspaces.length ===
+                1
                   ? "workspace"
                   : "workspaces"}
               </p>
 
-              {(search || filter !== "All") && (
+              {(search ||
+                filter !== "All") && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+
                     setSearch("");
                     setFilter("All");
                   }}
@@ -928,7 +1217,8 @@ const WorkspacesPage = () => {
             </div>
           </section>
 
-          {filteredWorkspaces.length > 0 ? (
+          {filteredWorkspaces.length >
+          0 ? (
             <section
               className="
                 grid
@@ -940,28 +1230,32 @@ const WorkspacesPage = () => {
               {filteredWorkspaces.map(
                 (workspace) => (
                   <WorkspaceCard
-                    key={workspace.id}
+                    key={workspace._id}
                     workspace={workspace}
                     menuOpen={
-                      openMenu === workspace.id
+                      openMenu ===
+                      workspace._id
                     }
                     onMenuToggle={() =>
                       setOpenMenu(
-                        openMenu === workspace.id
+                        openMenu ===
+                          workspace._id
                           ? null
-                          : workspace.id
+                          : workspace._id
                       )
                     }
                     onMenuClose={() =>
                       setOpenMenu(null)
                     }
-                    onDelete={handleDelete}
+                    onDelete={
+                      handleDelete
+                    }
                   />
                 )
               )}
             </section>
           ) : (
-         
+          
             <section
               className="
                 flex min-h-[300px]
@@ -988,33 +1282,82 @@ const WorkspacesPage = () => {
                 <Search size={18} />
               </div>
 
-              <h3 className="mt-4 text-[13px] font-semibold text-zinc-300">
-                No workspaces found
-              </h3>
-
-              <p className="mt-1 max-w-[280px] text-[10px] leading-4 text-zinc-600">
-                Try changing your search or filters,
-                or create a new workspace.
-              </p>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSearch("");
-                  setFilter("All");
-                }}
+              <h3
                 className="
                   mt-4
-                  text-[10px]
-                  font-medium
-                  text-[#dc9458]
-                  transition-colors
-                  hover:text-[#e5a067]
+                  text-[13px]
+                  font-semibold
+                  text-zinc-300
                 "
               >
-                Clear filters
-              </button>
+                {search ||
+                filter !== "All"
+                  ? "No workspaces found"
+                  : "No workspaces yet"}
+              </h3>
+
+              <p
+                className="
+                  mt-1
+                  max-w-[280px]
+                  text-[10px]
+                  leading-4
+                  text-zinc-600
+                "
+              >
+                {search ||
+                filter !== "All"
+                  ? "Try changing your search or filters."
+                  : "Create your first workspace and start coding."}
+              </p>
+
+              {search ||
+              filter !== "All" ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+
+                    setSearch("");
+                    setFilter("All");
+                  }}
+                  className="
+                    mt-4
+                    text-[10px]
+                    font-medium
+                    text-[#dc9458]
+                    transition-colors
+                    hover:text-[#e5a067]
+                  "
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openCreateWorkspace();
+                  }}
+                  className="
+                    mt-4
+                    flex h-9
+                    items-center gap-2
+                    rounded-lg
+                    bg-[#dc9458]
+                    px-4
+                    text-[10px]
+                    font-semibold
+                    text-[#17110d]
+                    transition-colors
+                    hover:bg-[#e5a067]
+                  "
+                >
+                  <Plus size={13} />
+
+                  Create Workspace
+                </button>
+              )}
             </section>
           )}
         </div>
