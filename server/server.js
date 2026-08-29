@@ -10,7 +10,7 @@ require("./config/redis");
 
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
-const projectRoutes = require("./routes/project.routes");
+const workspaceRoutes = require("./routes/workspace.routes");
 
 const initializeSocket = require("./sockets/socket");
 
@@ -31,7 +31,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/projects", projectRoutes);
+app.use("/api/workspaces", workspaceRoutes);
 
 app.get("/", (req, res) => {
   res.json({

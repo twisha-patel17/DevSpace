@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Search,
   Plus,
@@ -16,11 +16,6 @@ import {
   Trash2,
   Check,
 } from "lucide-react";
-
-/* =========================================================
-   DUMMY WORKSPACES
-   Later this will come from your backend API.
-========================================================= */
 
 const initialWorkspaces = [
   {
@@ -97,10 +92,6 @@ const initialWorkspaces = [
   },
 ];
 
-/* =========================================================
-   AVATAR STACK
-========================================================= */
-
 const AvatarStack = ({ count }) => {
   const avatars = ["TP", "RK", "PS", "AM"];
 
@@ -149,10 +140,6 @@ const AvatarStack = ({ count }) => {
     </div>
   );
 };
-
-/* =========================================================
-   WORKSPACE MENU
-========================================================= */
 
 const WorkspaceMenu = ({
   workspace,
@@ -254,10 +241,6 @@ const WorkspaceMenu = ({
     </div>
   );
 };
-
-/* =========================================================
-   WORKSPACE CARD
-========================================================= */
 
 const WorkspaceCard = ({
   workspace,
@@ -438,11 +421,10 @@ const WorkspaceCard = ({
   );
 };
 
-/* =========================================================
-   WORKSPACES PAGE
-========================================================= */
+const WorkspacesPage = () => {
 
-const WorkspacesPage = ({ onCreateWorkspace }) => {
+  const { onCreateWorkspace } = useOutletContext();
+
   const [workspaces, setWorkspaces] =
     useState(initialWorkspaces);
 
@@ -450,10 +432,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("All");
   const [openMenu, setOpenMenu] = useState(null);
-
-  /* =======================================================
-     FILTER WORKSPACES
-  ======================================================= */
 
   const filteredWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => {
@@ -479,10 +457,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
     });
   }, [workspaces, search, filter]);
 
-  /* =======================================================
-     DELETE
-  ======================================================= */
-
   const handleDelete = (id) => {
     setWorkspaces((current) =>
       current.filter(
@@ -490,10 +464,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
       )
     );
   };
-
-  /* =======================================================
-     STATS
-  ======================================================= */
 
   const totalWorkspaces = workspaces.length;
 
@@ -529,10 +499,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
         "
       >
         <div className="mx-auto max-w-[1280px]">
-
-          {/* =================================================
-              HEADER
-          ================================================= */}
 
           <section
             className="
@@ -591,18 +557,13 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
               </p>
             </div>
 
-            {/* =================================================
-                CREATE WORKSPACE
-            ================================================= */}
-
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onCreateWorkspace?.();
+                onCreateWorkspace();
               }}
               className="
-                group
                 flex h-10
                 w-full
                 shrink-0
@@ -627,14 +588,9 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
                 size={14}
                 strokeWidth={2.5}
               />
-
               <span>New Workspace</span>
             </button>
           </section>
-
-          {/* =================================================
-              STATS
-          ================================================= */}
 
           <section
             className="
@@ -735,10 +691,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
               </p>
             </div>
           </section>
-
-          {/* =================================================
-              SEARCH + FILTER
-          ================================================= */}
 
           <section className="mb-6">
             <div
@@ -946,8 +898,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
               </div>
             </div>
 
-            {/* RESULT COUNT */}
-
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[10px] text-zinc-700">
                 {filteredWorkspaces.length}{" "}
@@ -977,10 +927,6 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
               )}
             </div>
           </section>
-
-          {/* =================================================
-              WORKSPACE GRID
-          ================================================= */}
 
           {filteredWorkspaces.length > 0 ? (
             <section
@@ -1015,10 +961,7 @@ const WorkspacesPage = ({ onCreateWorkspace }) => {
               )}
             </section>
           ) : (
-            /* =================================================
-               EMPTY STATE
-            ================================================= */
-
+         
             <section
               className="
                 flex min-h-[300px]
