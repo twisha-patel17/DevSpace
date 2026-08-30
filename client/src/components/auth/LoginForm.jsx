@@ -24,24 +24,27 @@ const LoginForm = ({ onSwitch }) => {
     mutationFn: loginUser,
 
     onSuccess: (data) => {
-      console.log("Login successful:", data);
+  console.log("Login successful:", data);
 
-      setAuth(data.user, data.accessToken);
+  if (!data.accessToken) {
+    console.error("No access token received from server");
+    return;
+  }
 
-      if (data.refreshToken) {
-        localStorage.setItem(
-          "refreshToken",
-          data.refreshToken
-        );
-      }
-      if (rememberMe) {
-        localStorage.setItem("rememberMe", "true");
-      } else {
-        localStorage.removeItem("rememberMe");
-      }
+  setAuth(
+    data.user,
+    data.accessToken,
+    data.refreshToken || null
+  );
 
-      navigate("/dashboard");
-    },
+  if (rememberMe) {
+    localStorage.setItem("rememberMe", "true");
+  } else {
+    localStorage.removeItem("rememberMe");
+  }
+
+  navigate("/dashboard");
+},
 
     onError: (error) => {
       const message =

@@ -14,13 +14,15 @@ const authMiddleware = (req, res, next) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.ACCESS_TOKEN_SECRET
+      process.env.JWT_ACCESS_SECRET
     );
 
     req.user = decoded;
 
     next();
   } catch (error) {
+    console.error("JWT ERROR:", error);
+
     return res.status(401).json({
       message: "Invalid or expired access token",
     });

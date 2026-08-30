@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
+
 import {
   LayoutDashboard,
   FolderKanban,
@@ -29,12 +30,13 @@ const navigation = [
       },
       {
         label: "Shared with me",
-        path: "/workspaces?shared=true",
+        path: "/shared",
         icon: Users,
         count: 3,
       },
     ],
   },
+
   {
     title: "WORKSPACE",
     items: [
@@ -50,6 +52,7 @@ const navigation = [
       },
     ],
   },
+
   {
     title: "ACCOUNT",
     items: [
@@ -67,13 +70,39 @@ const navigation = [
   },
 ];
 
-const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
+const Sidebar = ({
+  open,
+  onClose,
+  onCreateWorkspace,
+}) => {
+  const location = useLocation();
+
+  const isItemActive = (item, routerIsActive) => {
+ 
+    if (item.label === "Workspaces") {
+      return (
+        location.pathname === "/workspaces" &&
+        !location.search
+      );
+    }
+
+    if (item.label === "Recent") {
+      return (
+        location.pathname === "/workspaces" &&
+        location.search === "?sort=recent"
+      );
+    }
+
+    if (item.label === "Shared with me") {
+      return location.pathname === "/shared";
+    }
+
+    return routerIsActive;
+  };
+
   return (
     <>
-      {/* =====================================================
-          MOBILE OVERLAY
-      ===================================================== */}
-
+    
       <div
         onClick={onClose}
         className={`
@@ -82,6 +111,7 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
           backdrop-blur-sm
           transition-opacity duration-300
           lg:hidden
+
           ${
             open
               ? "pointer-events-auto opacity-100"
@@ -89,10 +119,6 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
           }
         `}
       />
-
-      {/* =====================================================
-          SIDEBAR
-      ===================================================== */}
 
       <aside
         className={`
@@ -102,21 +128,34 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
           bg-[#0d0e10]
           shadow-[20px_0_60px_rgba(0,0,0,0.25)]
           transition-transform duration-300 ease-out
+
           lg:translate-x-0
           lg:shadow-none
-          ${open ? "translate-x-0" : "-translate-x-full"}
+
+          ${
+            open
+              ? "translate-x-0"
+              : "-translate-x-full"
+          }
         `}
       >
-        {/* ===================================================
-            LOGO
-        =================================================== */}
-
-        <div className="flex h-[76px] shrink-0 items-center border-b border-white/[0.06] px-5">
+       
+        <div
+          className="
+            flex h-[76px]
+            shrink-0
+            items-center
+            border-b border-white/[0.06]
+            px-5
+          "
+        >
           <NavLink
             to="/dashboard"
             onClick={onClose}
             className="group flex items-center gap-3"
           >
+            {/* Logo */}
+
             <span
               className="
                 flex h-8 w-8
@@ -134,18 +173,34 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
               D
             </span>
 
+            {/* Brand */}
+
             <div className="flex flex-col">
-              <span className="text-[15px] font-bold tracking-[-0.03em] text-zinc-200">
+              <span
+                className="
+                  text-[15px]
+                  font-bold
+                  tracking-[-0.03em]
+                  text-zinc-200
+                "
+              >
                 DevSpace
               </span>
 
-              <span className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+              <span
+                className="
+                  mt-0.5
+                  text-[9px]
+                  font-medium
+                  uppercase
+                  tracking-[0.12em]
+                  text-zinc-600
+                "
+              >
                 Developer Platform
               </span>
             </div>
           </NavLink>
-
-          {/* Mobile Close */}
 
           <button
             type="button"
@@ -168,27 +223,51 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
           </button>
         </div>
 
-        {/* ===================================================
-            NAVIGATION
-        =================================================== */}
-
-        <nav className="flex-1 overflow-y-auto px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        <nav
+          className="
+            flex-1
+            overflow-y-auto
+            px-3
+            py-6
+            scrollbar-thin
+            scrollbar-track-transparent
+            scrollbar-thumb-white/10
+          "
+        >
           {navigation.map((section) => (
             <div
               key={section.title}
               className="mb-7 last:mb-0"
             >
-              {/* Section title */}
-
-              <div className="mb-2 flex items-center px-3">
-                <span className="text-[9px] font-semibold tracking-[0.18em] text-zinc-600">
+              
+              <div
+                className="
+                  mb-2
+                  flex
+                  items-center
+                  px-3
+                "
+              >
+                <span
+                  className="
+                    text-[9px]
+                    font-semibold
+                    tracking-[0.18em]
+                    text-zinc-600
+                  "
+                >
                   {section.title}
                 </span>
 
-                <div className="ml-3 h-px flex-1 bg-white/[0.035]" />
+                <div
+                  className="
+                    ml-3
+                    h-px
+                    flex-1
+                    bg-white/[0.035]
+                  "
+                />
               </div>
-
-              {/* Navigation items */}
 
               <div className="space-y-1">
                 {section.items.map((item) => {
@@ -199,101 +278,135 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
                       key={item.label}
                       to={item.path}
                       onClick={onClose}
-                      className={({ isActive }) => `
-                        group relative flex h-10
-                        items-center gap-3
-                        rounded-lg px-3
-                        text-[12px]
-                        font-medium
-                        transition-all duration-200
-                        ${
-                          isActive
-                            ? "bg-[#241d19] text-zinc-100"
-                            : "text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-200"
-                        }
-                      `}
+                      className={({ isActive }) => {
+                        const active =
+                          isItemActive(
+                            item,
+                            isActive
+                          );
+
+                        return `
+                          group
+                          relative
+                          flex h-10
+                          items-center
+                          gap-3
+                          rounded-lg
+                          px-3
+                          text-[12px]
+                          font-medium
+                          transition-all
+                          duration-200
+
+                          ${
+                            active
+                              ? "bg-[#241d19] text-zinc-100"
+                              : "text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-200"
+                          }
+                        `;
+                      }}
                     >
-                      {({ isActive }) => (
-                        <>
-                          {/* Active indicator */}
+                      {({ isActive }) => {
+                        const active =
+                          isItemActive(
+                            item,
+                            isActive
+                          );
 
-                          <span
-                            className={`
-                              absolute left-0 top-1/2
-                              h-5 w-[2px]
-                              -translate-y-1/2
-                              rounded-r-full
-                              bg-[#dc9458]
-                              transition-opacity
-                              ${
-                                isActive
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              }
-                            `}
-                          />
-
-                          {/* Icon */}
-
-                          <span
-                            className={`
-                              flex h-7 w-7
-                              shrink-0
-                              items-center justify-center
-                              rounded-md
-                              transition-all duration-200
-                              ${
-                                isActive
-                                  ? "bg-[#dc9458]/10 text-[#dc9458]"
-                                  : "text-zinc-600 group-hover:bg-white/[0.04] group-hover:text-zinc-300"
-                              }
-                            `}
-                          >
-                            <Icon
-                              size={15}
-                              strokeWidth={isActive ? 2 : 1.7}
-                            />
-                          </span>
-
-                          {/* Label */}
-
-                          <span className="min-w-0 flex-1 truncate">
-                            {item.label}
-                          </span>
-
-                          {/* Count */}
-
-                          {item.count && (
+                        return (
+                          <>
+                           
                             <span
                               className={`
-                                flex h-5 min-w-5
+                                absolute
+                                left-0
+                                top-1/2
+                                h-5
+                                w-[2px]
+                                -translate-y-1/2
+                                rounded-r-full
+                                bg-[#dc9458]
+                                transition-opacity
+
+                                ${
+                                  active
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                }
+                              `}
+                            />
+
+                            <span
+                              className={`
+                                flex h-7 w-7
+                                shrink-0
                                 items-center
                                 justify-center
-                                rounded-full
-                                px-1.5
-                                text-[9px]
-                                font-semibold
+                                rounded-md
+                                transition-all
+                                duration-200
+
                                 ${
-                                  isActive
-                                    ? "bg-[#dc9458]/15 text-[#dc9458]"
-                                    : "bg-white/[0.04] text-zinc-600"
+                                  active
+                                    ? "bg-[#dc9458]/10 text-[#dc9458]"
+                                    : "text-zinc-600 group-hover:bg-white/[0.04] group-hover:text-zinc-300"
                                 }
                               `}
                             >
-                              {item.count}
+                              <Icon
+                                size={15}
+                                strokeWidth={
+                                  active
+                                    ? 2
+                                    : 1.7
+                                }
+                              />
                             </span>
-                          )}
 
-                          {/* Active arrow */}
+                            <span
+                              className="
+                                min-w-0
+                                flex-1
+                                truncate
+                              "
+                            >
+                              {item.label}
+                            </span>
 
-                          {isActive && (
-                            <ChevronRight
-                              size={13}
-                              className="text-[#dc9458]/60"
-                            />
-                          )}
-                        </>
-                      )}
+                            {item.count && (
+                              <span
+                                className={`
+                                  flex h-5
+                                  min-w-5
+                                  items-center
+                                  justify-center
+                                  rounded-full
+                                  px-1.5
+                                  text-[9px]
+                                  font-semibold
+
+                                  ${
+                                    active
+                                      ? "bg-[#dc9458]/15 text-[#dc9458]"
+                                      : "bg-white/[0.04] text-zinc-600"
+                                  }
+                                `}
+                              >
+                                {item.count}
+                              </span>
+                            )}
+
+                            {active && (
+                              <ChevronRight
+                                size={13}
+                                className="
+                                  text-[#dc9458]/60
+                                "
+                              />
+                            )}
+                          </>
+                        );
+                      }}
                     </NavLink>
                   );
                 })}
@@ -302,18 +415,17 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
           ))}
         </nav>
 
-        {/* ===================================================
-            NEW WORKSPACE
-        =================================================== */}
-
         <div className="px-3 pb-3">
           <button
             type="button"
             onClick={onCreateWorkspace}
             className="
-              group relative
-              flex h-10 w-full
-              items-center justify-center
+              group
+              relative
+              flex h-10
+              w-full
+              items-center
+              justify-center
               gap-2
               overflow-hidden
               rounded-lg
@@ -322,49 +434,74 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
               text-[11px]
               font-semibold
               text-[#dc9458]
-              transition-all duration-200
+              transition-all
+              duration-200
+
               hover:border-[#dc9458]/40
               hover:bg-[#dc9458]/[0.12]
               active:scale-[0.98]
             "
           >
+            
             <span
               className="
-                absolute inset-0
+                absolute
+                inset-0
                 -translate-x-full
                 bg-gradient-to-r
                 from-transparent
                 via-white/[0.04]
                 to-transparent
-                transition-transform duration-500
+                transition-transform
+                duration-500
                 group-hover:translate-x-full
               "
             />
 
-            <Plus size={15} strokeWidth={2.2} />
+            <Plus
+              size={15}
+              strokeWidth={2.2}
+            />
 
-            <span>New Workspace</span>
+            <span>
+              New Workspace
+            </span>
           </button>
         </div>
 
-        {/* ===================================================
-            USER SECTION
-        =================================================== */}
-
-        <div className="border-t border-white/[0.06] p-3">
-          <div className="group flex items-center gap-3 rounded-lg p-2 transition hover:bg-white/[0.025]">
-
-            {/* Avatar */}
-
+        <div
+          className="
+            border-t
+            border-white/[0.06]
+            p-3
+          "
+        >
+          <div
+            className="
+              group
+              flex
+              items-center
+              gap-3
+              rounded-lg
+              p-2
+              transition
+              hover:bg-white/[0.025]
+            "
+          >
+            
             <NavLink
               to="/profile"
               onClick={onClose}
-              className="relative shrink-0"
+              className="
+                relative
+                shrink-0
+              "
             >
               <div
                 className="
                   flex h-9 w-9
-                  items-center justify-center
+                  items-center
+                  justify-center
                   rounded-full
                   bg-[#dc9458]
                   text-[10px]
@@ -377,33 +514,60 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
 
               <span
                 className="
-                  absolute bottom-0 right-0
-                  h-2.5 w-2.5
+                  absolute
+                  bottom-0
+                  right-0
+                  h-2.5
+                  w-2.5
                   rounded-full
-                  border-2 border-[#0d0e10]
+                  border-2
+                  border-[#0d0e10]
                   bg-emerald-400
                 "
               />
             </NavLink>
 
-            {/* User Info */}
-
             <NavLink
               to="/profile"
               onClick={onClose}
-              className="min-w-0 flex-1"
+              className="
+                min-w-0
+                flex-1
+              "
             >
-              <p className="truncate text-[11px] font-semibold text-zinc-300">
+              <p
+                className="
+                  truncate
+                  text-[11px]
+                  font-semibold
+                  text-zinc-300
+                "
+              >
                 Twisha Patel
               </p>
 
-              <p className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-600">
-                <span className="h-1 w-1 rounded-full bg-emerald-400" />
+              <p
+                className="
+                  mt-0.5
+                  flex
+                  items-center
+                  gap-1
+                  text-[9px]
+                  text-zinc-600
+                "
+              >
+                <span
+                  className="
+                    h-1
+                    w-1
+                    rounded-full
+                    bg-emerald-400
+                  "
+                />
+
                 Online
               </p>
             </NavLink>
-
-            {/* Logout */}
 
             <button
               type="button"
@@ -411,11 +575,13 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
               className="
                 flex h-8 w-8
                 shrink-0
-                items-center justify-center
+                items-center
+                justify-center
                 rounded-md
                 border border-white/[0.06]
                 text-zinc-600
                 transition-all
+
                 hover:border-red-400/20
                 hover:bg-red-400/[0.05]
                 hover:text-red-400
@@ -423,7 +589,6 @@ const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
             >
               <LogOut size={13} />
             </button>
-
           </div>
         </div>
       </aside>

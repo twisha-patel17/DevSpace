@@ -42,6 +42,18 @@ const getUserWorkspaces = async (userId) => {
   return workspaces;
 };
 
+const getSharedWorkspaces = async (userId) => {
+  const workspaces = await Workspace.find({
+    owner: { $ne: userId },
+    "members.user": userId,
+  })
+    .populate("owner", "name email")
+    .populate("members.user", "name email")
+    .sort({ updatedAt: -1 });
+
+  return workspaces;
+};
+
 const getWorkspaceById = async ({
   workspaceId,
   userId,
@@ -80,7 +92,8 @@ const updateWorkspace = async ({
   }
 
   if (description !== undefined) {
-    workspace.description = description.trim();
+    workspace.description =
+      description.trim();
   }
 
   if (visibility !== undefined) {
@@ -96,10 +109,11 @@ const deleteWorkspace = async ({
   workspaceId,
   userId,
 }) => {
-  const workspace = await Workspace.findOneAndDelete({
-    _id: workspaceId,
-    owner: userId,
-  });
+  const workspace =
+    await Workspace.findOneAndDelete({
+      _id: workspaceId,
+      owner: userId,
+    });
 
   return workspace;
 };
@@ -107,6 +121,7 @@ const deleteWorkspace = async ({
 module.exports = {
   createWorkspace,
   getUserWorkspaces,
+  getSharedWorkspaces,
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,

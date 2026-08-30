@@ -3,6 +3,7 @@ const express = require("express");
 const {
   createWorkspaceController,
   getWorkspacesController,
+  getSharedWorkspacesController,
   getWorkspaceController,
   updateWorkspaceController,
   deleteWorkspaceController,
@@ -17,6 +18,8 @@ router.use(authMiddleware);
 router.post("/", createWorkspaceController);
 
 router.get("/", getWorkspacesController);
+
+router.get("/shared", getSharedWorkspacesController);
 
 router.get("/:workspaceId", getWorkspaceController);
 

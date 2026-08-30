@@ -1,6 +1,7 @@
 const {
   createWorkspace,
   getUserWorkspaces,
+  getSharedWorkspaces,
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
@@ -14,7 +15,7 @@ const createWorkspaceController = async (req, res) => {
       template,
       language,
       visibility,
-    } = req.body;
+  } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -36,7 +37,10 @@ const createWorkspaceController = async (req, res) => {
       workspace,
     });
   } catch (error) {
-    console.error("Create workspace error:", error);
+    console.error(
+      "Create workspace error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to create workspace",
@@ -44,17 +48,22 @@ const createWorkspaceController = async (req, res) => {
   }
 };
 
-const getWorkspacesController = async (req, res) => {
+const getWorkspacesController = async (
+  req,
+  res
+) => {
   try {
-    const workspaces = await getUserWorkspaces(
-      req.user.id
-    );
+    const workspaces =
+      await getUserWorkspaces(req.user.id);
 
     return res.status(200).json({
       workspaces,
     });
   } catch (error) {
-    console.error("Get workspaces error:", error);
+    console.error(
+      "Get workspaces error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to fetch workspaces",
@@ -62,14 +71,41 @@ const getWorkspacesController = async (req, res) => {
   }
 };
 
-const getWorkspaceController = async (req, res) => {
+const getSharedWorkspacesController = async (
+  req,
+  res
+) => {
+  try {
+    const workspaces =
+      await getSharedWorkspaces(req.user.id);
+
+    return res.status(200).json({
+      workspaces,
+    });
+  } catch (error) {
+    console.error(
+      "Get shared workspaces error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to fetch shared workspaces",
+    });
+  }
+};
+
+const getWorkspaceController = async (
+  req,
+  res
+) => {
   try {
     const { workspaceId } = req.params;
 
-    const workspace = await getWorkspaceById({
-      workspaceId,
-      userId: req.user.id,
-    });
+    const workspace =
+      await getWorkspaceById({
+        workspaceId,
+        userId: req.user.id,
+      });
 
     if (!workspace) {
       return res.status(404).json({
@@ -81,7 +117,10 @@ const getWorkspaceController = async (req, res) => {
       workspace,
     });
   } catch (error) {
-    console.error("Get workspace error:", error);
+    console.error(
+      "Get workspace error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to fetch workspace",
@@ -89,7 +128,10 @@ const getWorkspaceController = async (req, res) => {
   }
 };
 
-const updateWorkspaceController = async (req, res) => {
+const updateWorkspaceController = async (
+  req,
+  res
+) => {
   try {
     const { workspaceId } = req.params;
 
@@ -104,26 +146,31 @@ const updateWorkspaceController = async (req, res) => {
       !name.trim()
     ) {
       return res.status(400).json({
-        message: "Workspace name cannot be empty",
+        message:
+          "Workspace name cannot be empty",
       });
     }
 
     if (
       visibility !== undefined &&
-      !["private", "public"].includes(visibility)
+      !["private", "public"].includes(
+        visibility
+      )
     ) {
       return res.status(400).json({
-        message: "Invalid workspace visibility",
+        message:
+          "Invalid workspace visibility",
       });
     }
 
-    const workspace = await updateWorkspace({
-      workspaceId,
-      userId: req.user.id,
-      name,
-      description,
-      visibility,
-    });
+    const workspace =
+      await updateWorkspace({
+        workspaceId,
+        userId: req.user.id,
+        name,
+        description,
+        visibility,
+      });
 
     if (!workspace) {
       return res.status(404).json({
@@ -133,11 +180,15 @@ const updateWorkspaceController = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "Workspace updated successfully",
+      message:
+        "Workspace updated successfully",
       workspace,
     });
   } catch (error) {
-    console.error("Update workspace error:", error);
+    console.error(
+      "Update workspace error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to update workspace",
@@ -145,14 +196,18 @@ const updateWorkspaceController = async (req, res) => {
   }
 };
 
-const deleteWorkspaceController = async (req, res) => {
+const deleteWorkspaceController = async (
+  req,
+  res
+) => {
   try {
     const { workspaceId } = req.params;
 
-    const workspace = await deleteWorkspace({
-      workspaceId,
-      userId: req.user.id,
-    });
+    const workspace =
+      await deleteWorkspace({
+        workspaceId,
+        userId: req.user.id,
+      });
 
     if (!workspace) {
       return res.status(404).json({
@@ -162,10 +217,14 @@ const deleteWorkspaceController = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "Workspace deleted successfully",
+      message:
+        "Workspace deleted successfully",
     });
   } catch (error) {
-    console.error("Delete workspace error:", error);
+    console.error(
+      "Delete workspace error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to delete workspace",
@@ -176,6 +235,7 @@ const deleteWorkspaceController = async (req, res) => {
 module.exports = {
   createWorkspaceController,
   getWorkspacesController,
+  getSharedWorkspacesController,
   getWorkspaceController,
   updateWorkspaceController,
   deleteWorkspaceController,

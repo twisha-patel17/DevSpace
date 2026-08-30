@@ -1,22 +1,36 @@
 import api from "./axios";
 
 export const getWorkspaces = async () => {
-  const response = await api.get("/workspaces");
+  const response = await api.get(
+    "/api/workspaces"
+  );
 
   return response.data.workspaces;
 };
 
-export const getWorkspace = async (workspaceId) => {
+export const getSharedWorkspaces = async () => {
   const response = await api.get(
-    `/workspaces/${workspaceId}`
+    "/api/workspaces/shared"
+  );
+
+  return response.data.workspaces;
+};
+
+export const getWorkspace = async (
+  workspaceId
+) => {
+  const response = await api.get(
+    `/api/workspaces/${workspaceId}`
   );
 
   return response.data.workspace;
 };
 
-export const createWorkspace = async (workspaceData) => {
+export const createWorkspace = async (
+  workspaceData
+) => {
   const response = await api.post(
-    "/workspaces",
+    "/api/workspaces",
     workspaceData
   );
 
@@ -28,16 +42,18 @@ export const updateWorkspace = async ({
   workspaceData,
 }) => {
   const response = await api.patch(
-    `/workspaces/${workspaceId}`,
+    `/api/workspaces/${workspaceId}`,
     workspaceData
   );
 
   return response.data.workspace;
 };
 
-export const deleteWorkspace = async (workspaceId) => {
+export const deleteWorkspace = async (
+  workspaceId
+) => {
   const response = await api.delete(
-    `/workspaces/${workspaceId}`
+    `/api/workspaces/${workspaceId}`
   );
 
   return response.data;
