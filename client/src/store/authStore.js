@@ -9,38 +9,44 @@ const useAuthStore = create(
       refreshToken: null,
       isAuthenticated: false,
 
-      setAuth: (user, accessToken, refreshToken = null) =>
+      setAuth: (user, accessToken, refreshToken = null) => {
         set({
           user,
           accessToken,
           refreshToken,
           isAuthenticated: true,
-        }),
+        });
+      },
 
-      setUser: (user) =>
+      setUser: (user) => {
         set({
           user,
           isAuthenticated: !!user,
-        }),
+        });
+      },
 
-      setAccessToken: (accessToken) =>
+      setAccessToken: (accessToken) => {
         set({
           accessToken,
           isAuthenticated: !!accessToken,
-        }),
+        });
+      },
 
-      setRefreshToken: (refreshToken) =>
+      setRefreshToken: (refreshToken) => {
         set({
           refreshToken,
-        }),
+        });
+      },
 
-      logout: () =>
+      logout: () => {
         set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        });
+        localStorage.removeItem("devspace-auth");
+      },
     }),
     {
       name: "devspace-auth",

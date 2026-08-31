@@ -2,6 +2,7 @@ const {
   registerUser,
   loginUser,
   loginWithGithub,
+  refreshAccessToken,
 } = require("../services/auth.service");
 
 const register = async (req, res) => {
@@ -20,7 +21,7 @@ const register = async (req, res) => {
       password,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "User registered successfully",
       ...result,
     });
@@ -33,7 +34,7 @@ const register = async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error",
     });
   }
@@ -54,7 +55,7 @@ const login = async (req, res) => {
       password,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful",
       ...result,
     });
@@ -71,7 +72,7 @@ const login = async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error",
     });
   }
@@ -99,6 +100,7 @@ const githubLogin = (req, res) => {
 
   res.redirect(githubAuthUrl.toString());
 };
+
 const githubCallback = async (req, res) => {
   try {
     const { code, error } = req.query;
@@ -125,7 +127,7 @@ const githubCallback = async (req, res) => {
       user: JSON.stringify(result.user),
     });
 
-    res.redirect(
+    return res.redirect(
       `${process.env.CLIENT_URL}/oauth/callback?${params.toString()}`
     );
   } catch (error) {
@@ -155,9 +157,34 @@ const githubCallback = async (req, res) => {
   }
 };
 
+const refresh = (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        message: "Refresh token is required",
+      });
+    }
+
+    const accessToken = refreshAccessToken(refreshToken);
+
+    return res.status(200).json({
+      accessToken,
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+
+    return res.status(401).json({
+      message: "Invalid or expired refresh token",
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   githubLogin,
   githubCallback,
+  refresh,
 };

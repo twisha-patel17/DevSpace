@@ -28,6 +28,7 @@ const createWorkspace = async ({
   return workspace;
 };
 
+// Get all workspaces user owns or is a member of
 const getUserWorkspaces = async (userId) => {
   const workspaces = await Workspace.find({
     $or: [
@@ -35,25 +36,43 @@ const getUserWorkspaces = async (userId) => {
       { "members.user": userId },
     ],
   })
-    .populate("owner", "name email")
-    .populate("members.user", "name email")
+    .populate("owner", "username email avatar")
+    .populate("members.user", "username email avatar")
     .sort({ updatedAt: -1 });
 
   return workspaces;
 };
 
+// Get recently updated workspaces
+const getRecentWorkspaces = async (userId) => {
+  const workspaces = await Workspace.find({
+    $or: [
+      { owner: userId },
+      { "members.user": userId },
+    ],
+  })
+    .populate("owner", "username email avatar")
+    .populate("members.user", "username email avatar")
+    .sort({ updatedAt: -1 })
+    .limit(20);
+
+  return workspaces;
+};
+
+// Get workspaces shared with the user
 const getSharedWorkspaces = async (userId) => {
   const workspaces = await Workspace.find({
     owner: { $ne: userId },
     "members.user": userId,
   })
-    .populate("owner", "name email")
-    .populate("members.user", "name email")
+    .populate("owner", "username email avatar")
+    .populate("members.user", "username email avatar")
     .sort({ updatedAt: -1 });
 
   return workspaces;
 };
 
+// Get a single workspace
 const getWorkspaceById = async ({
   workspaceId,
   userId,
@@ -65,12 +84,13 @@ const getWorkspaceById = async ({
       { "members.user": userId },
     ],
   })
-    .populate("owner", "name email")
-    .populate("members.user", "name email");
+    .populate("owner", "username email avatar")
+    .populate("members.user", "username email avatar");
 
   return workspace;
 };
 
+// Update workspace
 const updateWorkspace = async ({
   workspaceId,
   userId,
@@ -92,8 +112,7 @@ const updateWorkspace = async ({
   }
 
   if (description !== undefined) {
-    workspace.description =
-      description.trim();
+    workspace.description = description.trim();
   }
 
   if (visibility !== undefined) {
@@ -105,6 +124,7 @@ const updateWorkspace = async ({
   return workspace;
 };
 
+// Delete workspace
 const deleteWorkspace = async ({
   workspaceId,
   userId,
@@ -121,6 +141,7 @@ const deleteWorkspace = async ({
 module.exports = {
   createWorkspace,
   getUserWorkspaces,
+  getRecentWorkspaces,
   getSharedWorkspaces,
   getWorkspaceById,
   updateWorkspace,

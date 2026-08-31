@@ -10,22 +10,31 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const accessToken =
-      useAuthStore.getState().accessToken;
-
-    console.log("🔐 Axios accessToken:", accessToken);
-    console.log("🌐 Axios request:", config.url);
+    const accessToken = useAuthStore.getState().accessToken;
 
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
-      console.log("✅ Authorization header attached");
-    } else {
-      console.log("❌ NO ACCESS TOKEN");
     }
 
     return config;
   },
+  (error) => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  (response) => response,
+
   (error) => {
+    if (error.response?.status === 401) {
+      console.log("🔴 Access token expired. Logging out...");
+
+      useAuthStore.getState().logout();
+
+      if (window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
+    }
+
     return Promise.reject(error);
   }
 );

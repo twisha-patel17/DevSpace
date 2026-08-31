@@ -7,6 +7,7 @@ import OAuthCallback from "./pages/OAuthCallback";
 import DashboardPage from "./pages/DashboardPage";
 import WorkspacesPage from "./pages/WorkspacesPage";
 import SharedWithMePage from "./pages/SharedWithMePage";
+import RecentPage from "./pages/RecentPage";
 
 import AppLayout from "./components/layout/AppLayout";
 
@@ -39,6 +40,11 @@ const AppRoutes = () => {
         <Route
           path="/shared"
           element={<SharedWithMePage />}
+        />
+
+        <Route
+          path="/recent"
+          element={<RecentPage />}
         />
       </Route>
     </Routes>

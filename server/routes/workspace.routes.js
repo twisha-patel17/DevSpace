@@ -3,6 +3,7 @@ const express = require("express");
 const {
   createWorkspaceController,
   getWorkspacesController,
+  getRecentWorkspacesController,
   getSharedWorkspacesController,
   getWorkspaceController,
   updateWorkspaceController,
@@ -15,13 +16,33 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-router.post("/", createWorkspaceController);
+router.post(
+  "/",
+  createWorkspaceController
+);
 
-router.get("/", getWorkspacesController);
+router.get(
+  "/",
+  getWorkspacesController
+);
 
-router.get("/shared", getSharedWorkspacesController);
+// IMPORTANT:
+// These specific routes must come BEFORE /:workspaceId
 
-router.get("/:workspaceId", getWorkspaceController);
+router.get(
+  "/recent",
+  getRecentWorkspacesController
+);
+
+router.get(
+  "/shared",
+  getSharedWorkspacesController
+);
+
+router.get(
+  "/:workspaceId",
+  getWorkspaceController
+);
 
 router.patch(
   "/:workspaceId",

@@ -65,6 +65,11 @@ const workspaceSchema = new mongoose.Schema(
         },
       },
     ],
+
+    lastOpenedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

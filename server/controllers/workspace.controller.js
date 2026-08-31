@@ -1,6 +1,7 @@
 const {
   createWorkspace,
   getUserWorkspaces,
+  getRecentWorkspaces,
   getSharedWorkspaces,
   getWorkspaceById,
   updateWorkspace,
@@ -15,7 +16,7 @@ const createWorkspaceController = async (req, res) => {
       template,
       language,
       visibility,
-  } = req.body;
+    } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -67,6 +68,29 @@ const getWorkspacesController = async (
 
     return res.status(500).json({
       message: "Failed to fetch workspaces",
+    });
+  }
+};
+
+const getRecentWorkspacesController = async (
+  req,
+  res
+) => {
+  try {
+    const workspaces =
+      await getRecentWorkspaces(req.user.id);
+
+    return res.status(200).json({
+      workspaces,
+    });
+  } catch (error) {
+    console.error(
+      "Get recent workspaces error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to fetch recent workspaces",
     });
   }
 };
@@ -235,6 +259,7 @@ const deleteWorkspaceController = async (
 module.exports = {
   createWorkspaceController,
   getWorkspacesController,
+  getRecentWorkspacesController,
   getSharedWorkspacesController,
   getWorkspaceController,
   updateWorkspaceController,

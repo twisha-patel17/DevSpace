@@ -7,6 +7,7 @@ const {
   login,
   githubLogin,
   githubCallback,
+  refresh,
 } = require("../controllers/auth.controller");
 
 const validate = require("../middleware/validate");
@@ -36,6 +37,11 @@ router.get(
 router.get(
   "/github/callback",
   githubCallback
+);
+
+router.post(
+  "/refresh",
+  refresh
 );
 
 module.exports = router;

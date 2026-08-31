@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import {
   LayoutDashboard,
@@ -13,6 +13,8 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+
+import useAuthStore from "../../store/authStore";
 
 const navigation = [
   {
@@ -42,7 +44,7 @@ const navigation = [
     items: [
       {
         label: "Recent",
-        path: "/workspaces?sort=recent",
+        path: "/recent",
         icon: Clock3,
       },
       {
@@ -76,33 +78,45 @@ const Sidebar = ({
   onCreateWorkspace,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const logout = useAuthStore(
+    (state) => state.logout
+  );
+
+  const user = useAuthStore(
+    (state) => state.user
+  );
 
   const isItemActive = (item, routerIsActive) => {
- 
-    if (item.label === "Workspaces") {
-      return (
-        location.pathname === "/workspaces" &&
-        !location.search
-      );
-    }
+  if (item.label === "Workspaces") {
+    return (
+      location.pathname === "/workspaces" &&
+      !location.search
+    );
+  }
 
-    if (item.label === "Recent") {
-      return (
-        location.pathname === "/workspaces" &&
-        location.search === "?sort=recent"
-      );
-    }
+  if (item.label === "Recent") {
+    return location.pathname === "/recent";
+  }
 
-    if (item.label === "Shared with me") {
-      return location.pathname === "/shared";
-    }
+  if (item.label === "Shared with me") {
+    return location.pathname === "/shared";
+  }
 
-    return routerIsActive;
+  return routerIsActive;
+};
+
+  const handleLogout = () => {
+    logout();
+    onClose?.();
+    navigate("/login", { replace: true });
   };
 
   return (
     <>
-    
+      {/* Mobile Overlay */}
+
       <div
         onClick={onClose}
         className={`
@@ -119,6 +133,8 @@ const Sidebar = ({
           }
         `}
       />
+
+      {/* Sidebar */}
 
       <aside
         className={`
@@ -139,7 +155,8 @@ const Sidebar = ({
           }
         `}
       >
-       
+        {/* Header */}
+
         <div
           className="
             flex h-[76px]
@@ -202,6 +219,8 @@ const Sidebar = ({
             </div>
           </NavLink>
 
+          {/* Mobile Close */}
+
           <button
             type="button"
             onClick={onClose}
@@ -223,6 +242,8 @@ const Sidebar = ({
           </button>
         </div>
 
+        {/* Navigation */}
+
         <nav
           className="
             flex-1
@@ -239,7 +260,8 @@ const Sidebar = ({
               key={section.title}
               className="mb-7 last:mb-0"
             >
-              
+              {/* Section title */}
+
               <div
                 className="
                   mb-2
@@ -268,6 +290,8 @@ const Sidebar = ({
                   "
                 />
               </div>
+
+              {/* Navigation items */}
 
               <div className="space-y-1">
                 {section.items.map((item) => {
@@ -315,7 +339,8 @@ const Sidebar = ({
 
                         return (
                           <>
-                           
+                            {/* Active indicator */}
+
                             <span
                               className={`
                                 absolute
@@ -335,6 +360,8 @@ const Sidebar = ({
                                 }
                               `}
                             />
+
+                            {/* Icon */}
 
                             <span
                               className={`
@@ -363,6 +390,8 @@ const Sidebar = ({
                               />
                             </span>
 
+                            {/* Label */}
+
                             <span
                               className="
                                 min-w-0
@@ -372,6 +401,8 @@ const Sidebar = ({
                             >
                               {item.label}
                             </span>
+
+                            {/* Count */}
 
                             {item.count && (
                               <span
@@ -395,6 +426,8 @@ const Sidebar = ({
                                 {item.count}
                               </span>
                             )}
+
+                            {/* Active arrow */}
 
                             {active && (
                               <ChevronRight
@@ -442,7 +475,6 @@ const Sidebar = ({
               active:scale-[0.98]
             "
           >
-            
             <span
               className="
                 absolute
@@ -469,6 +501,8 @@ const Sidebar = ({
           </button>
         </div>
 
+        {/* User */}
+
         <div
           className="
             border-t
@@ -488,7 +522,8 @@ const Sidebar = ({
               hover:bg-white/[0.025]
             "
           >
-            
+            {/* Avatar */}
+
             <NavLink
               to="/profile"
               onClick={onClose}
@@ -509,7 +544,9 @@ const Sidebar = ({
                   text-[#17110d]
                 "
               >
-                TP
+                {user?.username
+                  ?.slice(0, 2)
+                  .toUpperCase() || "TP"}
               </div>
 
               <span
@@ -543,7 +580,7 @@ const Sidebar = ({
                   text-zinc-300
                 "
               >
-                Twisha Patel
+                {user?.username || "User"}
               </p>
 
               <p
@@ -572,6 +609,7 @@ const Sidebar = ({
             <button
               type="button"
               title="Log out"
+              onClick={handleLogout}
               className="
                 flex h-8 w-8
                 shrink-0
