@@ -25,10 +25,6 @@ import {
   useDeleteWorkspace,
 } from "../lib/workspace.queries";
 
-/* =========================================================
-   LANGUAGE HELPERS
-========================================================= */
-
 const languageStyles = {
   JavaScript: {
     short: "JS",
@@ -60,10 +56,6 @@ const languageStyles = {
     className: "bg-[#252629] text-zinc-300",
   },
 };
-
-/* =========================================================
-   AVATAR STACK
-========================================================= */
 
 const AvatarStack = ({ count }) => {
   const avatars = ["TP", "RK", "PS", "AM"];
@@ -113,10 +105,6 @@ const AvatarStack = ({ count }) => {
     </div>
   );
 };
-
-/* =========================================================
-   CREATE WORKSPACE MODAL
-========================================================= */
 
 const CreateWorkspaceModal = ({
   isOpen,
@@ -578,10 +566,6 @@ const CreateWorkspaceModal = ({
   );
 };
 
-/* =========================================================
-   WORKSPACE MENU
-========================================================= */
-
 const WorkspaceMenu = ({
   workspace,
   onClose,
@@ -705,10 +689,6 @@ const WorkspaceMenu = ({
     </div>
   );
 };
-
-/* =========================================================
-   WORKSPACE CARD
-========================================================= */
 
 const WorkspaceCard = ({
   workspace,
@@ -902,15 +882,8 @@ const WorkspaceCard = ({
   );
 };
 
-/* =========================================================
-   WORKSPACES PAGE
-========================================================= */
-
 const WorkspacesPage = () => {
-  /* =======================================================
-     TANSTACK QUERY
-  ======================================================= */
-
+ 
   const {
     data: workspaces = [],
     isLoading,
@@ -918,19 +891,11 @@ const WorkspacesPage = () => {
     error,
   } = useWorkspaces();
 
-  /* =======================================================
-     MUTATIONS
-  ======================================================= */
-
   const createWorkspaceMutation =
     useCreateWorkspace();
 
   const deleteWorkspaceMutation =
     useDeleteWorkspace();
-
-  /* =======================================================
-     LOCAL UI STATE
-  ======================================================= */
 
   const [search, setSearch] = useState("");
 
@@ -944,10 +909,6 @@ const WorkspacesPage = () => {
 
   const [createModalOpen, setCreateModalOpen] =
     useState(false);
-
-  /* =======================================================
-     FILTER WORKSPACES
-  ======================================================= */
 
   const filteredWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => {
@@ -979,10 +940,6 @@ const WorkspacesPage = () => {
     });
   }, [workspaces, search, filter]);
 
-  /* =======================================================
-     CREATE WORKSPACE
-  ======================================================= */
-
   const handleCreateWorkspace = async (
     workspaceData
   ) => {
@@ -1004,10 +961,6 @@ const WorkspacesPage = () => {
     });
   };
 
-  /* =======================================================
-     DELETE WORKSPACE
-  ======================================================= */
-
   const handleDelete = async (
     workspaceId
   ) => {
@@ -1025,10 +978,6 @@ const WorkspacesPage = () => {
     }
   };
 
-  /* =======================================================
-     STATS
-  ======================================================= */
-
   const totalWorkspaces =
     workspaces.length;
 
@@ -1042,10 +991,6 @@ const WorkspacesPage = () => {
         (workspace.members?.length || 1),
       0
     );
-
-  /* =======================================================
-     LOADING STATE
-  ======================================================= */
 
   if (isLoading) {
     return (
@@ -1091,10 +1036,6 @@ const WorkspacesPage = () => {
       </main>
     );
   }
-
-  /* =======================================================
-     ERROR STATE
-  ======================================================= */
 
   if (isError) {
     return (
@@ -1154,10 +1095,6 @@ const WorkspacesPage = () => {
     );
   }
 
-  /* =======================================================
-     MAIN UI
-  ======================================================= */
-
   return (
     <>
       <main
@@ -1186,10 +1123,7 @@ const WorkspacesPage = () => {
               max-w-[1280px]
             "
           >
-            {/* =================================================
-                HEADER
-            ================================================= */}
-
+           
             <section
               className="
                 mb-8
@@ -1252,8 +1186,6 @@ const WorkspacesPage = () => {
                 </p>
               </div>
 
-              {/* NEW WORKSPACE */}
-
               <button
                 type="button"
                 onClick={(e) => {
@@ -1291,10 +1223,6 @@ const WorkspacesPage = () => {
                 </span>
               </button>
             </section>
-
-            {/* =================================================
-                STATS
-            ================================================= */}
 
             <section
               className="
@@ -1465,10 +1393,6 @@ const WorkspacesPage = () => {
               </div>
             </section>
 
-            {/* =================================================
-                SEARCH + FILTER
-            ================================================= */}
-
             <section className="mb-6">
               <div
                 className="
@@ -1528,8 +1452,6 @@ const WorkspacesPage = () => {
                     "
                   />
                 </div>
-
-                {/* FILTER */}
 
                 <div className="relative sm:w-[180px]">
                   <button
@@ -1591,8 +1513,6 @@ const WorkspacesPage = () => {
                       `}
                     />
                   </button>
-
-                  {/* FILTER DROPDOWN */}
 
                   {filterOpen && (
                     <div
@@ -1748,10 +1668,6 @@ const WorkspacesPage = () => {
               </div>
             </section>
 
-            {/* =================================================
-                WORKSPACE GRID
-            ================================================= */}
-
             {filteredWorkspaces.length > 0 ? (
               <section
                 className="
@@ -1789,10 +1705,7 @@ const WorkspacesPage = () => {
                 )}
               </section>
             ) : (
-              /* =================================================
-                 EMPTY STATE
-              ================================================= */
-
+             
               <section
                 className="
                   flex min-h-[300px]
@@ -1846,8 +1759,6 @@ const WorkspacesPage = () => {
                     : "Try changing your search or filters."}
                 </p>
 
-                {/* ONLY NEW WORKSPACE ACTION */}
-
                 {workspaces.length === 0 ? (
                   <button
                     type="button"
@@ -1900,10 +1811,6 @@ const WorkspacesPage = () => {
           </div>
         </div>
       </main>
-
-      {/* =====================================================
-          CREATE WORKSPACE MODAL
-      ===================================================== */}
 
       <CreateWorkspaceModal
         isOpen={createModalOpen}

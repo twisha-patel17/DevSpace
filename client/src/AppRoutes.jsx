@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OAuthCallback from "./pages/OAuthCallback";
 import DashboardPage from "./pages/DashboardPage";
+import WorkspacePage from "./pages/WorkspacePage";
 import WorkspacesPage from "./pages/WorkspacesPage";
 import SharedWithMePage from "./pages/SharedWithMePage";
 import RecentPage from "./pages/RecentPage";
@@ -45,6 +46,11 @@ const AppRoutes = () => {
         <Route
           path="/recent"
           element={<RecentPage />}
+        />
+
+        <Route
+        path="/workspaces/:workspaceId"
+        element={<WorkspacePage />}
         />
       </Route>
     </Routes>

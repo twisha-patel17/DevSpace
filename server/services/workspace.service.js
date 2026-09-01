@@ -28,7 +28,6 @@ const createWorkspace = async ({
   return workspace;
 };
 
-// Get all workspaces user owns or is a member of
 const getUserWorkspaces = async (userId) => {
   const workspaces = await Workspace.find({
     $or: [
@@ -43,13 +42,13 @@ const getUserWorkspaces = async (userId) => {
   return workspaces;
 };
 
-// Get recently updated workspaces
 const getRecentWorkspaces = async (userId) => {
   const workspaces = await Workspace.find({
     $or: [
       { owner: userId },
       { "members.user": userId },
     ],
+    lastOpenedAt: { $ne: null },
   })
     .populate("owner", "username email avatar")
     .populate("members.user", "username email avatar")
@@ -59,7 +58,6 @@ const getRecentWorkspaces = async (userId) => {
   return workspaces;
 };
 
-// Get workspaces shared with the user
 const getSharedWorkspaces = async (userId) => {
   const workspaces = await Workspace.find({
     owner: { $ne: userId },
@@ -72,7 +70,6 @@ const getSharedWorkspaces = async (userId) => {
   return workspaces;
 };
 
-// Get a single workspace
 const getWorkspaceById = async ({
   workspaceId,
   userId,
@@ -90,7 +87,6 @@ const getWorkspaceById = async ({
   return workspace;
 };
 
-// Update workspace
 const updateWorkspace = async ({
   workspaceId,
   userId,
@@ -124,7 +120,6 @@ const updateWorkspace = async ({
   return workspace;
 };
 
-// Delete workspace
 const deleteWorkspace = async ({
   workspaceId,
   userId,
@@ -138,6 +133,31 @@ const deleteWorkspace = async ({
   return workspace;
 };
 
+const markWorkspaceOpened = async ({
+  workspaceId,
+  userId,
+}) => {
+  const workspace = await Workspace.findOneAndUpdate(
+    {
+      _id: workspaceId,
+      $or: [
+        { owner: userId },
+        { "members.user": userId },
+      ],
+    },
+    {
+      $set: {
+        lastOpenedAt: new Date(),
+      },
+    },
+    {
+      new: true,
+    }
+  );
+
+  return workspace;
+};
+
 module.exports = {
   createWorkspace,
   getUserWorkspaces,
@@ -146,4 +166,5 @@ module.exports = {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
+  markWorkspaceOpened,
 };

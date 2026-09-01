@@ -3,6 +3,7 @@ const {
   getUserWorkspaces,
   getRecentWorkspaces,
   getSharedWorkspaces,
+  markWorkspaceOpened,
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
@@ -256,6 +257,41 @@ const deleteWorkspaceController = async (
   }
 };
 
+const markWorkspaceOpenedController = async (
+  req,
+  res
+) => {
+  try {
+    const { workspaceId } = req.params;
+
+    const workspace =
+      await markWorkspaceOpened({
+        workspaceId,
+        userId: req.user.id,
+      });
+
+    if (!workspace) {
+      return res.status(404).json({
+        message: "Workspace not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Workspace marked as opened",
+      workspace,
+    });
+  } catch (error) {
+    console.error(
+      "Mark workspace opened error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to update workspace",
+    });
+  }
+};
+
 module.exports = {
   createWorkspaceController,
   getWorkspacesController,
@@ -264,4 +300,5 @@ module.exports = {
   getWorkspaceController,
   updateWorkspaceController,
   deleteWorkspaceController,
+  markWorkspaceOpenedController,
 };
