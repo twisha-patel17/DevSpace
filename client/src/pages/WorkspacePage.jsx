@@ -172,6 +172,7 @@ const WorkspacePage = () => {
 
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
 
   const activeFile = useMemo(() => {
     return (
@@ -316,6 +317,7 @@ const WorkspacePage = () => {
   const handleEditorChange = (value) => {
     setCode(value ?? "");
     setIsDirty(true);
+    setOutput("");
   };
 
   const handleSave = async () => {
@@ -361,10 +363,72 @@ const WorkspacePage = () => {
     }
   };
 
-  const handleRun = () => {
-    setOutput(
-      "Code execution engine will be connected to DevSpace next."
-    );
+  const handleRun = async () => {
+    if (!activeFile || isRunning) {
+      return;
+    }
+
+    try {
+      setIsRunning(true);
+      setOutput("Running code...\n");
+
+      const response = await api.post(
+        "/api/execution/run",
+        {
+          language: editorLanguage,
+          code,
+          stdin: "",
+        }
+      );
+
+      const result = response.data.result;
+
+      let executionOutput = "";
+
+      if (result?.stdout) {
+        executionOutput += result.stdout;
+      }
+
+      if (result?.stderr) {
+        if (executionOutput) {
+          executionOutput += "\n";
+        }
+
+        executionOutput += result.stderr;
+      }
+
+      if (!executionOutput) {
+        executionOutput =
+          result?.output ||
+          "Program finished with no output.";
+      }
+
+      if (
+        result?.exitCode !== null &&
+        result?.exitCode !== undefined &&
+        result.exitCode !== 0
+      ) {
+        executionOutput += `\n\nProcess exited with code: ${result.exitCode}`;
+      }
+
+      setOutput(executionOutput);
+    } catch (error) {
+      console.error(
+        "Code execution failed:",
+        error
+      );
+
+      const serverMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message;
+
+      setOutput(
+        serverMessage ||
+          "Code execution failed. Please try again."
+      );
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const handleBack = () => {
@@ -418,7 +482,6 @@ const WorkspacePage = () => {
   }
 
   return (
-  
     <div
       className="
         flex
@@ -430,7 +493,6 @@ const WorkspacePage = () => {
         text-zinc-200
       "
     >
-  
       <header
         className="
           flex
@@ -584,6 +646,7 @@ const WorkspacePage = () => {
           <button
             type="button"
             onClick={handleRun}
+            disabled={isRunning}
             className="
               flex h-8
               items-center
@@ -597,6 +660,8 @@ const WorkspacePage = () => {
               transition
               hover:bg-[#e3a06b]
               active:scale-[0.98]
+              disabled:cursor-not-allowed
+              disabled:opacity-60
             "
           >
             <Play
@@ -604,7 +669,7 @@ const WorkspacePage = () => {
               fill="currentColor"
             />
 
-            Run
+            {isRunning ? "Running..." : "Run"}
           </button>
 
           {/* Settings */}
@@ -629,7 +694,6 @@ const WorkspacePage = () => {
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-      
         <aside
           className="
             hidden
@@ -816,6 +880,8 @@ const WorkspacePage = () => {
             </div>
           </div>
 
+          {/* Editor */}
+
           <div className="relative min-h-0 flex-1 overflow-hidden bg-[#0b0c0e]">
             <Editor
               height="100%"
@@ -890,6 +956,8 @@ const WorkspacePage = () => {
             />
           </div>
 
+          {/* Output */}
+
           <div
             className="
               flex
@@ -900,7 +968,6 @@ const WorkspacePage = () => {
               bg-[#0f1012]
             "
           >
-            
             <div
               className="
                 flex
@@ -924,7 +991,7 @@ const WorkspacePage = () => {
 
             <div className="min-h-0 flex-1 overflow-auto p-3">
               {output ? (
-                <pre className="font-mono text-[11px] leading-5 text-zinc-500">
+                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-zinc-500">
                   {output}
                 </pre>
               ) : (
