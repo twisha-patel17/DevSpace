@@ -57,6 +57,14 @@ const languageStyles = {
   },
 };
 
+const templateLanguageMap = {
+  blank: "Blank",
+  javascript: "JavaScript",
+  react: "React",
+  python: "Python",
+  cpp: "C++",
+};
+
 const AvatarStack = ({ count }) => {
   const avatars = ["TP", "RK", "PS", "AM"];
 
@@ -69,22 +77,24 @@ const AvatarStack = ({ count }) => {
 
   return (
     <div className="flex items-center">
-      {avatars.slice(0, Math.min(count, 4)).map((avatar, index) => (
-        <span
-          key={`${avatar}-${index}`}
-          className={`
-            flex h-6 w-6
-            items-center justify-center
-            rounded-full
-            border-2 border-[#111214]
-            text-[7px] font-bold
-            ${index !== 0 ? "-ml-1.5" : ""}
-            ${avatarStyles[index]}
-          `}
-        >
-          {avatar}
-        </span>
-      ))}
+      {avatars
+        .slice(0, Math.min(count, 4))
+        .map((avatar, index) => (
+          <span
+            key={`${avatar}-${index}`}
+            className={`
+              flex h-6 w-6
+              items-center justify-center
+              rounded-full
+              border-2 border-[#111214]
+              text-[7px] font-bold
+              ${index !== 0 ? "-ml-1.5" : ""}
+              ${avatarStyles[index]}
+            `}
+          >
+            {avatar}
+          </span>
+        ))}
 
       {count > 4 && (
         <span
@@ -115,8 +125,8 @@ const CreateWorkspaceModal = ({
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    template: "Blank",
-    language: "JavaScript",
+    template: "blank",
+    language: "Blank",
     visibility: "private",
   });
 
@@ -129,10 +139,22 @@ const CreateWorkspaceModal = ({
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    setFormData((current) => ({
-      ...current,
-      [name]: value,
-    }));
+    setFormData((current) => {
+     
+      if (name === "template") {
+        return {
+          ...current,
+          template: value,
+          language:
+            templateLanguageMap[value] || "Blank",
+        };
+      }
+
+      return {
+        ...current,
+        [name]: value,
+      };
+    });
 
     setError("");
   };
@@ -151,15 +173,14 @@ const CreateWorkspaceModal = ({
         description: formData.description.trim(),
         template: formData.template,
         language: formData.language,
-        languageName: formData.language,
         visibility: formData.visibility,
       });
 
       setFormData({
         title: "",
         description: "",
-        template: "Blank",
-        language: "JavaScript",
+        template: "blank",
+        language: "Blank",
         visibility: "private",
       });
 
@@ -248,7 +269,6 @@ const CreateWorkspaceModal = ({
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 px-5 py-5">
-
             {/* NAME */}
 
             <div>
@@ -300,6 +320,7 @@ const CreateWorkspaceModal = ({
                 "
               >
                 Description
+
                 <span className="ml-1 text-zinc-700">
                   (optional)
                 </span>
@@ -333,7 +354,14 @@ const CreateWorkspaceModal = ({
 
             {/* LANGUAGE + VISIBILITY */}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div
+              className="
+                grid grid-cols-1
+                gap-3
+                sm:grid-cols-2
+              "
+            >
+              {/* LANGUAGE */}
 
               <div>
                 <label
@@ -389,6 +417,8 @@ const CreateWorkspaceModal = ({
                 </select>
               </div>
 
+              {/* VISIBILITY */}
+
               <div>
                 <label
                   className="
@@ -426,7 +456,6 @@ const CreateWorkspaceModal = ({
                   </option>
                 </select>
               </div>
-
             </div>
 
             {/* TEMPLATE */}
@@ -459,12 +488,24 @@ const CreateWorkspaceModal = ({
                   focus:border-[#dc9458]/40
                 "
               >
-                <option value="Blank">
+                <option value="blank">
                   Blank Workspace
                 </option>
 
-                <option value="Basic">
-                  Basic Project
+                <option value="javascript">
+                  JavaScript
+                </option>
+
+                <option value="react">
+                  React
+                </option>
+
+                <option value="python">
+                  Python
+                </option>
+
+                <option value="cpp">
+                  C++
                 </option>
               </select>
             </div>
@@ -555,6 +596,7 @@ const CreateWorkspaceModal = ({
               ) : (
                 <>
                   <Plus size={13} />
+
                   Create Workspace
                 </>
               )}
@@ -604,9 +646,11 @@ const WorkspaceMenu = ({
         type="button"
         onClick={handleOpen}
         className="
-          flex w-full items-center gap-2.5
+          flex w-full
+          items-center gap-2.5
           px-3 py-2.5
-          text-left text-[11px]
+          text-left
+          text-[11px]
           text-zinc-300
           transition-colors
           hover:bg-white/[0.05]
@@ -621,14 +665,14 @@ const WorkspaceMenu = ({
         Open
       </button>
 
-      {/* RENAME */}
-
       <button
         type="button"
         className="
-          flex w-full items-center gap-2.5
+          flex w-full
+          items-center gap-2.5
           px-3 py-2.5
-          text-left text-[11px]
+          text-left
+          text-[11px]
           text-zinc-300
           transition-colors
           hover:bg-white/[0.05]
@@ -643,14 +687,14 @@ const WorkspaceMenu = ({
         Rename
       </button>
 
-      {/* DUPLICATE */}
-
       <button
         type="button"
         className="
-          flex w-full items-center gap-2.5
+          flex w-full
+          items-center gap-2.5
           px-3 py-2.5
-          text-left text-[11px]
+          text-left
+          text-[11px]
           text-zinc-300
           transition-colors
           hover:bg-white/[0.05]
@@ -667,15 +711,16 @@ const WorkspaceMenu = ({
 
       <div className="mx-2 border-t border-white/[0.06]" />
 
-      {/* DELETE */}
-
       <button
         type="button"
         onClick={handleDelete}
+        disabled={false}
         className="
-          flex w-full items-center gap-2.5
+          flex w-full
+          items-center gap-2.5
           px-3 py-2.5
-          text-left text-[11px]
+          text-left
+          text-[11px]
           text-red-400
           transition-colors
           hover:bg-red-500/[0.06]
@@ -689,7 +734,6 @@ const WorkspaceMenu = ({
     </div>
   );
 };
-
 const WorkspaceCard = ({
   workspace,
   menuOpen,
@@ -813,7 +857,8 @@ const WorkspaceCard = ({
             text-zinc-600
           "
         >
-          {workspace.description || "No description"}
+          {workspace.description ||
+            "No description"}
         </p>
       </div>
 
@@ -842,7 +887,8 @@ const WorkspaceCard = ({
           <span
             className="
               flex items-center gap-1
-              text-[9px] text-zinc-700
+              text-[9px]
+              text-zinc-700
             "
           >
             <Clock3 size={11} />
@@ -850,8 +896,6 @@ const WorkspaceCard = ({
             Recently
           </span>
         </div>
-
-        {/* OPEN BUTTON */}
 
         <button
           type="button"
@@ -883,7 +927,6 @@ const WorkspaceCard = ({
 };
 
 const WorkspacesPage = () => {
- 
   const {
     data: workspaces = [],
     isLoading,
@@ -919,7 +962,8 @@ const WorkspacesPage = () => {
         workspace.name?.toLowerCase() || "";
 
       const description =
-        workspace.description?.toLowerCase() || "";
+        workspace.description?.toLowerCase() ||
+        "";
 
       const language =
         workspace.language?.toLowerCase() || "";
@@ -953,7 +997,6 @@ const WorkspacesPage = () => {
         workspaceData.template,
 
       language:
-        workspaceData.languageName ||
         workspaceData.language,
 
       visibility:
@@ -1123,7 +1166,7 @@ const WorkspacesPage = () => {
               max-w-[1280px]
             "
           >
-           
+            
             <section
               className="
                 mb-8
@@ -1401,8 +1444,6 @@ const WorkspacesPage = () => {
                   sm:flex-row
                 "
               >
-                {/* SEARCH */}
-
                 <div
                   className="
                     group
@@ -1415,7 +1456,9 @@ const WorkspacesPage = () => {
                     strokeWidth={1.8}
                     className="
                       pointer-events-none
-                      absolute left-3.5 top-1/2
+                      absolute
+                      left-3.5
+                      top-1/2
                       -translate-y-1/2
                       text-zinc-600
                       transition-colors
@@ -1453,6 +1496,8 @@ const WorkspacesPage = () => {
                   />
                 </div>
 
+                {/* FILTER */}
+
                 <div className="relative sm:w-[180px]">
                   <button
                     type="button"
@@ -1465,7 +1510,8 @@ const WorkspacesPage = () => {
                     }}
                     className={`
                       flex h-10 w-full
-                      items-center justify-between
+                      items-center
+                      justify-between
                       rounded-lg
                       border
                       px-3.5
@@ -1517,7 +1563,9 @@ const WorkspacesPage = () => {
                   {filterOpen && (
                     <div
                       className="
-                        absolute right-0 top-[46px]
+                        absolute
+                        right-0
+                        top-[46px]
                         z-40
                         w-full
                         overflow-hidden
@@ -1593,7 +1641,8 @@ const WorkspacesPage = () => {
                           }}
                           className={`
                             flex w-full
-                            items-center justify-between
+                            items-center
+                            justify-between
                             rounded-lg
                             px-2.5 py-2
                             text-left
@@ -1601,7 +1650,8 @@ const WorkspacesPage = () => {
                             transition-all duration-150
 
                             ${
-                              filter === option.value
+                              filter ===
+                              option.value
                                 ? "bg-[#dc9458]/[0.10] text-[#dc9458]"
                                 : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
                             }
@@ -1697,9 +1747,7 @@ const WorkspacesPage = () => {
                       onMenuClose={() =>
                         setOpenMenu(null)
                       }
-                      onDelete={
-                        handleDelete
-                      }
+                      onDelete={handleDelete}
                     />
                   )
                 )}
@@ -1817,9 +1865,7 @@ const WorkspacesPage = () => {
         onClose={() =>
           setCreateModalOpen(false)
         }
-        onCreate={
-          handleCreateWorkspace
-        }
+        onCreate={handleCreateWorkspace}
         isCreating={
           createWorkspaceMutation.isPending
         }

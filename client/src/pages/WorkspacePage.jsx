@@ -120,13 +120,51 @@ const getDefaultFileName = (workspace) => {
   return "main.js";
 };
 
+const getDefaultFileLanguage = (workspace) => {
+  const template = workspace?.template?.toLowerCase();
+
+  if (template === "python") {
+    return "python";
+  }
+
+  if (template === "cpp") {
+    return "cpp";
+  }
+
+  if (template === "react") {
+    return "javascript";
+  }
+
+  if (template === "javascript") {
+    return "javascript";
+  }
+
+  return "javascript";
+};
+
+const getDefaultFileContent = (workspace) => {
+  const template =
+    workspace?.template?.toLowerCase() || "blank";
+
+  return (
+    DEFAULT_CODE[template] ||
+    DEFAULT_CODE.blank
+  );
+};
+
 const WorkspacePage = () => {
   const { workspaceId } = useParams();
   const navigate = useNavigate();
 
   const [workspace, setWorkspace] = useState(null);
 
+  const [files, setFiles] = useState([]);
+  const [activeFileId, setActiveFileId] = useState(null);
+
   const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] =
+    useState(true);
+
   const [error, setError] = useState("");
 
   const [code, setCode] = useState("");
@@ -135,76 +173,104 @@ const WorkspacePage = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  /*
-   * Fetch workspace
-   */
+  const activeFile = useMemo(() => {
+    return (
+      files.find(
+        (file) => file._id === activeFileId
+      ) || null
+    );
+  }, [files, activeFileId]);
+
+  const editorLanguage = useMemo(() => {
+    if (activeFile?.language) {
+      return activeFile.language;
+    }
+
+    return getEditorLanguage(workspace);
+  }, [activeFile, workspace]);
+
+  const fileName = useMemo(() => {
+    if (activeFile?.name) {
+      return activeFile.name;
+    }
+
+    return getDefaultFileName(workspace);
+  }, [activeFile, workspace]);
+
   useEffect(() => {
     const fetchWorkspace = async () => {
       try {
         setLoading(true);
+        setFilesLoading(true);
         setError("");
 
-        const response = await api.get(
+        const workspaceResponse = await api.get(
           `/api/workspaces/${workspaceId}`
         );
 
         const fetchedWorkspace =
-          response.data.workspace;
+          workspaceResponse.data.workspace;
 
         setWorkspace(fetchedWorkspace);
 
-        /*
-         * Load locally saved code if available.
-         * Otherwise use the workspace template.
-         */
-        const savedLocalCode = localStorage.getItem(
-          `devspace-code-${workspaceId}`
-        );
-
-        const template =
-          fetchedWorkspace.template?.toLowerCase() ||
-          "blank";
-
-        setCode(
-          savedLocalCode ||
-            DEFAULT_CODE[template] ||
-            DEFAULT_CODE.blank
-        );
-
-        setIsDirty(false);
-
-        /*
-         * Mark workspace as opened
-         *
-         * PATCH:
-         * /api/workspaces/:workspaceId/opened
-         */
         try {
           const openedResponse = await api.patch(
             `/api/workspaces/${workspaceId}/opened`
           );
 
-          /*
-           * Update workspace state with the
-           * latest lastOpenedAt value returned
-           * by the backend.
-           */
           if (openedResponse.data.workspace) {
             setWorkspace(
               openedResponse.data.workspace
             );
           }
         } catch (openedError) {
-          /*
-           * Opening the workspace should not fail
-           * just because lastOpenedAt couldn't
-           * be updated.
-           */
           console.error(
             "Failed to mark workspace as opened:",
             openedError
           );
         }
+
+        const filesResponse = await api.get(
+          `/api/workspaces/${workspaceId}/files`
+        );
+
+        let fetchedFiles =
+          filesResponse.data.files || [];
+
+        if (fetchedFiles.length === 0) {
+          const defaultFileResponse =
+            await api.post(
+              `/api/workspaces/${workspaceId}/files`,
+              {
+                name: getDefaultFileName(
+                  fetchedWorkspace
+                ),
+
+                language:
+                  getDefaultFileLanguage(
+                    fetchedWorkspace
+                  ),
+
+                content:
+                  getDefaultFileContent(
+                    fetchedWorkspace
+                  ),
+              }
+            );
+
+          const createdFile =
+            defaultFileResponse.data.file;
+
+          fetchedFiles = [createdFile];
+        }
+
+        setFiles(fetchedFiles);
+
+        const firstFile = fetchedFiles[0];
+
+        setActiveFileId(firstFile._id);
+        setCode(firstFile.content || "");
+        setIsDirty(false);
       } catch (error) {
         console.error(
           "Failed to fetch workspace:",
@@ -217,6 +283,7 @@ const WorkspacePage = () => {
         );
       } finally {
         setLoading(false);
+        setFilesLoading(false);
       }
     };
 
@@ -225,40 +292,72 @@ const WorkspacePage = () => {
     }
   }, [workspaceId]);
 
-  const editorLanguage = useMemo(
-    () => getEditorLanguage(workspace),
-    [workspace]
-  );
+  const handleFileSelect = (file) => {
+    if (file._id === activeFileId) {
+      return;
+    }
 
-  const fileName = useMemo(
-    () => getDefaultFileName(workspace),
-    [workspace]
-  );
+    if (isDirty) {
+      const shouldSwitch = window.confirm(
+        "You have unsaved changes. Switch files anyway?"
+      );
+
+      if (!shouldSwitch) {
+        return;
+      }
+    }
+
+    setActiveFileId(file._id);
+    setCode(file.content || "");
+    setIsDirty(false);
+    setOutput("");
+  };
 
   const handleEditorChange = (value) => {
     setCode(value ?? "");
     setIsDirty(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!activeFile || isSaving) {
+      return;
+    }
+
     try {
       setIsSaving(true);
 
-      localStorage.setItem(
-        `devspace-code-${workspaceId}`,
-        code
+      const response = await api.patch(
+        `/api/workspaces/${workspaceId}/files/${activeFile._id}`,
+        {
+          content: code,
+        }
       );
 
+      const updatedFile =
+        response.data.file;
+
+      setFiles((currentFiles) =>
+        currentFiles.map((file) =>
+          file._id === updatedFile._id
+            ? updatedFile
+            : file
+        )
+      );
+
+      setCode(updatedFile.content || "");
       setIsDirty(false);
     } catch (error) {
       console.error(
-        "Failed to save code:",
+        "Failed to save file:",
         error
       );
+
+      setOutput(
+        error.response?.data?.message ||
+          "Failed to save file"
+      );
     } finally {
-      setTimeout(() => {
-        setIsSaving(false);
-      }, 300);
+      setIsSaving(false);
     }
   };
 
@@ -274,7 +373,7 @@ const WorkspacePage = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-[#0d0e10] text-zinc-500">
+      <div className="flex h-full min-h-0 items-center justify-center bg-[#0d0e10] text-zinc-500">
         <div className="text-sm">
           Loading workspace...
         </div>
@@ -284,7 +383,7 @@ const WorkspacePage = () => {
 
   if (error || !workspace) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center bg-[#0d0e10] px-6 text-center">
+      <div className="flex h-full min-h-0 flex-col items-center justify-center bg-[#0d0e10] px-6 text-center">
         <div className="mb-3 text-sm font-semibold text-zinc-300">
           Workspace unavailable
         </div>
@@ -319,12 +418,23 @@ const WorkspacePage = () => {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0d0e10] text-zinc-200">
-      {/* Header */}
-
+  
+    <div
+      className="
+        flex
+        h-[calc(100dvh-5rem)]
+        min-h-0
+        flex-col
+        overflow-hidden
+        bg-[#0d0e10]
+        text-zinc-200
+      "
+    >
+  
       <header
         className="
-          flex h-14
+          flex
+          h-14
           shrink-0
           items-center
           border-b border-white/[0.06]
@@ -504,7 +614,8 @@ const WorkspacePage = () => {
             title="Workspace settings"
             className="
               flex h-8 w-8
-              items-center justify-center
+              items-center
+              justify-center
               rounded-md
               text-zinc-600
               transition
@@ -517,11 +628,8 @@ const WorkspacePage = () => {
         </div>
       </header>
 
-      {/* Workspace body */}
-
-      <div className="flex min-h-0 flex-1">
-        {/* Explorer */}
-
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      
         <aside
           className="
             hidden
@@ -538,6 +646,7 @@ const WorkspacePage = () => {
           <div
             className="
               flex h-10
+              shrink-0
               items-center
               justify-between
               border-b border-white/[0.05]
@@ -574,7 +683,7 @@ const WorkspacePage = () => {
 
           {/* Files */}
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {/* Root */}
 
             <div className="mb-1 flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-zinc-400">
@@ -585,61 +694,71 @@ const WorkspacePage = () => {
                 className="text-[#dc9458]"
               />
 
-              <span>src</span>
+              <span>Workspace</span>
             </div>
 
-            {/* Main file */}
+            {/* Loading */}
 
-            <button
-              type="button"
-              className="
-                flex w-full
-                items-center
-                gap-2
-                rounded-md
-                bg-[#dc9458]/[0.08]
-                px-7 py-2
-                text-left
-                text-[10px]
-                text-zinc-200
-              "
-            >
-              <FileCode2
-                size={13}
-                className="text-[#dc9458]"
-              />
+            {filesLoading ? (
+              <div className="px-7 py-3 text-[10px] text-zinc-700">
+                Loading files...
+              </div>
+            ) : files.length === 0 ? (
+              <div className="px-7 py-3 text-[10px] text-zinc-700">
+                No files
+              </div>
+            ) : (
+              files.map((file) => {
+                const isActive =
+                  file._id === activeFileId;
 
-              {fileName}
-            </button>
+                return (
+                  <button
+                    key={file._id}
+                    type="button"
+                    onClick={() =>
+                      handleFileSelect(file)
+                    }
+                    className={`
+                      flex w-full
+                      items-center
+                      gap-2
+                      rounded-md
+                      px-7 py-2
+                      text-left
+                      text-[10px]
+                      transition
 
-            {/* README */}
+                      ${
+                        isActive
+                          ? "bg-[#dc9458]/[0.08] text-zinc-200"
+                          : "text-zinc-600 hover:bg-white/[0.03] hover:text-zinc-300"
+                      }
+                    `}
+                  >
+                    <FileCode2
+                      size={13}
+                      className={
+                        isActive
+                          ? "text-[#dc9458]"
+                          : "text-zinc-600"
+                      }
+                    />
 
-            <button
-              type="button"
-              className="
-                flex w-full
-                items-center
-                gap-2
-                rounded-md
-                px-7 py-2
-                text-left
-                text-[10px]
-                text-zinc-600
-                transition
-                hover:bg-white/[0.03]
-                hover:text-zinc-300
-              "
-            >
-              <FileCode2 size={13} />
-
-              README.md
-            </button>
+                    <span className="truncate">
+                      {file.name}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
 
           {/* Workspace info */}
 
           <div
             className="
+              shrink-0
               border-t
               border-white/[0.05]
               p-3
@@ -655,14 +774,13 @@ const WorkspacePage = () => {
           </div>
         </aside>
 
-        {/* Editor area */}
-
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* File tab */}
 
           <div
             className="
-              flex h-10
+              flex
+              h-10
               shrink-0
               items-center
               border-b border-white/[0.05]
@@ -698,11 +816,10 @@ const WorkspacePage = () => {
             </div>
           </div>
 
-          {/* Monaco Editor */}
-
-          <div className="relative min-h-0 flex-1 bg-[#0b0c0e]">
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-[#0b0c0e]">
             <Editor
               height="100%"
+              width="100%"
               language={editorLanguage}
               value={code}
               onChange={handleEditorChange}
@@ -773,23 +890,21 @@ const WorkspacePage = () => {
             />
           </div>
 
-          {/* Output */}
-
           <div
             className="
               flex
-              h-40
+              h-36
               shrink-0
               flex-col
               border-t border-white/[0.06]
               bg-[#0f1012]
             "
           >
-            {/* Output header */}
-
+            
             <div
               className="
-                flex h-9
+                flex
+                h-9
                 shrink-0
                 items-center
                 gap-2
@@ -807,7 +922,7 @@ const WorkspacePage = () => {
               </span>
             </div>
 
-            <div className="flex-1 overflow-auto p-3">
+            <div className="min-h-0 flex-1 overflow-auto p-3">
               {output ? (
                 <pre className="font-mono text-[11px] leading-5 text-zinc-500">
                   {output}

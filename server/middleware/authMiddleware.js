@@ -16,7 +16,6 @@ const authMiddleware = (req, res, next) => {
       token,
       process.env.JWT_ACCESS_SECRET
     );
-
     req.user = decoded;
 
     next();

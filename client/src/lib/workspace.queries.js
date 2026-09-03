@@ -6,11 +6,16 @@ import {
 
 import {
   getWorkspaces,
+  getRecentWorkspaces,
   getWorkspace,
   getSharedWorkspaces,
   createWorkspace,
   updateWorkspace,
   deleteWorkspace,
+  getWorkspaceFiles,
+  createWorkspaceFile,
+  updateWorkspaceFile,
+  deleteWorkspaceFile,
 } from "../api/workspace.api";
 
 export const workspaceKeys = {
@@ -20,6 +25,8 @@ export const workspaceKeys = {
 
   list: () => [...workspaceKeys.lists()],
 
+  recent: () => [...workspaceKeys.all, "recent"],
+
   shared: () => [...workspaceKeys.all, "shared"],
 
   details: () => [...workspaceKeys.all, "detail"],
@@ -28,12 +35,24 @@ export const workspaceKeys = {
     ...workspaceKeys.details(),
     workspaceId,
   ],
+
+  files: (workspaceId) => [
+    ...workspaceKeys.detail(workspaceId),
+    "files",
+  ],
 };
 
 export const useWorkspaces = () => {
   return useQuery({
     queryKey: workspaceKeys.list(),
     queryFn: getWorkspaces,
+  });
+};
+
+export const useRecentWorkspaces = () => {
+  return useQuery({
+    queryKey: workspaceKeys.recent(),
+    queryFn: getRecentWorkspaces,
   });
 };
 
@@ -48,6 +67,14 @@ export const useWorkspace = (workspaceId) => {
   return useQuery({
     queryKey: workspaceKeys.detail(workspaceId),
     queryFn: () => getWorkspace(workspaceId),
+    enabled: !!workspaceId,
+  });
+};
+
+export const useWorkspaceFiles = (workspaceId) => {
+  return useQuery({
+    queryKey: workspaceKeys.files(workspaceId),
+    queryFn: () => getWorkspaceFiles(workspaceId),
     enabled: !!workspaceId,
   });
 };
@@ -78,6 +105,10 @@ export const useUpdateWorkspace = () => {
       });
 
       queryClient.invalidateQueries({
+        queryKey: workspaceKeys.recent(),
+      });
+
+      queryClient.invalidateQueries({
         queryKey: workspaceKeys.shared(),
       });
 
@@ -99,8 +130,7 @@ export const useDeleteWorkspace = () => {
 
     onSuccess: (_, workspaceId) => {
       queryClient.removeQueries({
-        queryKey:
-          workspaceKeys.detail(workspaceId),
+        queryKey: workspaceKeys.detail(workspaceId),
       });
 
       queryClient.invalidateQueries({
@@ -108,7 +138,71 @@ export const useDeleteWorkspace = () => {
       });
 
       queryClient.invalidateQueries({
+        queryKey: workspaceKeys.recent(),
+      });
+
+      queryClient.invalidateQueries({
         queryKey: workspaceKeys.shared(),
+      });
+    },
+  });
+};
+
+export const useCreateWorkspaceFile = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createWorkspaceFile,
+
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.files(
+          variables.workspaceId
+        ),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.detail(
+          variables.workspaceId
+        ),
+      });
+    },
+  });
+};
+
+export const useUpdateWorkspaceFile = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateWorkspaceFile,
+
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.files(
+          variables.workspaceId
+        ),
+      });
+    },
+  });
+};
+
+export const useDeleteWorkspaceFile = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteWorkspaceFile,
+
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.files(
+          variables.workspaceId
+        ),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.detail(
+          variables.workspaceId
+        ),
       });
     },
   });

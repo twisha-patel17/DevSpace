@@ -9,58 +9,74 @@ const {
   getWorkspaceController,
   updateWorkspaceController,
   deleteWorkspaceController,
+
+  getWorkspaceFilesController,
+  createWorkspaceFileController,
+  updateWorkspaceFileController,
+  deleteWorkspaceFileController,
 } = require("../controllers/workspace.controller");
 
 const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// Protect all workspace routes
 router.use(authMiddleware);
 
-// Create workspace
 router.post(
   "/",
   createWorkspaceController
 );
 
-// Get all workspaces
 router.get(
   "/",
   getWorkspacesController
 );
 
-// Get recent workspaces
 router.get(
   "/recent",
   getRecentWorkspacesController
 );
 
-// Get shared workspaces
 router.get(
   "/shared",
   getSharedWorkspacesController
 );
 
-// Mark workspace as opened
+router.get(
+  "/:workspaceId/files",
+  getWorkspaceFilesController
+);
+
+router.post(
+  "/:workspaceId/files",
+  createWorkspaceFileController
+);
+
+router.patch(
+  "/:workspaceId/files/:fileId",
+  updateWorkspaceFileController
+);
+
+router.delete(
+  "/:workspaceId/files/:fileId",
+  deleteWorkspaceFileController
+);
+
 router.patch(
   "/:workspaceId/opened",
   markWorkspaceOpenedController
 );
 
-// Get single workspace
 router.get(
   "/:workspaceId",
   getWorkspaceController
 );
 
-// Update workspace
 router.patch(
   "/:workspaceId",
   updateWorkspaceController
 );
 
-// Delete workspace
 router.delete(
   "/:workspaceId",
   deleteWorkspaceController
