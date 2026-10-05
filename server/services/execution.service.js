@@ -1,11 +1,11 @@
 const axios = require("axios");
 
-const PISTON_URL = "https://emkc.org/api/v2/piston/execute";
+const PISTON_URL = "http://localhost:2000/api/v2/execute";
 
 const LANGUAGE_CONFIG = {
   javascript: {
     language: "javascript",
-    version: "18.15.0",
+    version: "20.11.1",
   },
 
   python: {

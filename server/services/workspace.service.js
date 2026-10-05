@@ -1,4 +1,5 @@
 const Workspace = require("../models/workspace.model");
+const File = require("../models/file.model");
 
 const createWorkspace = async ({
   userId,
@@ -124,11 +125,19 @@ const deleteWorkspace = async ({
   workspaceId,
   userId,
 }) => {
-  const workspace =
-    await Workspace.findOneAndDelete({
-      _id: workspaceId,
-      owner: userId,
-    });
+  const workspace = await Workspace.findOneAndDelete({
+    _id: workspaceId,
+    owner: userId,
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  // Delete all files belonging to the workspace
+  await File.deleteMany({
+    workspace: workspaceId,
+  });
 
   return workspace;
 };
@@ -174,7 +183,14 @@ const getWorkspaceFiles = async ({
     return null;
   }
 
-  return workspace.files;
+  const files = await File.find({
+    workspace: workspaceId,
+  })
+    .populate("createdBy", "username email avatar")
+    .populate("updatedBy", "username email avatar")
+    .sort({ type: 1, name: 1 });
+
+  return files;
 };
 
 const createWorkspaceFile = async ({
@@ -183,6 +199,9 @@ const createWorkspaceFile = async ({
   name,
   language,
   content,
+  path,
+  type,
+  parent,
 }) => {
   const workspace = await Workspace.findOne({
     _id: workspaceId,
@@ -214,19 +233,19 @@ const createWorkspaceFile = async ({
     };
   }
 
-  const file = {
+  const file = await File.create({
+    workspace: workspaceId,
     name,
-    language,
+    path: path || name,
+    type: type || "file",
+    language: language || null,
     content: content || "",
-  };
+    parent: parent || null,
+    createdBy: userId,
+    updatedBy: userId,
+  });
 
-  workspace.files.push(file);
-
-  await workspace.save();
-
-  return workspace.files[
-    workspace.files.length - 1
-  ];
+  return file;
 };
 
 const updateWorkspaceFile = async ({
@@ -236,6 +255,7 @@ const updateWorkspaceFile = async ({
   name,
   language,
   content,
+  path,
 }) => {
   const workspace = await Workspace.findOne({
     _id: workspaceId,
@@ -267,7 +287,10 @@ const updateWorkspaceFile = async ({
     };
   }
 
-  const file = workspace.files.id(fileId);
+  const file = await File.findOne({
+    _id: fileId,
+    workspace: workspaceId,
+  });
 
   if (!file) {
     return {
@@ -287,12 +310,17 @@ const updateWorkspaceFile = async ({
     file.content = content;
   }
 
-  await workspace.save();
+  if (path !== undefined) {
+    file.path = path.trim();
+  }
+
+  file.updatedBy = userId;
+
+  await file.save();
 
   return file;
 };
 
-// Delete a file
 const deleteWorkspaceFile = async ({
   workspaceId,
   userId,
@@ -328,7 +356,10 @@ const deleteWorkspaceFile = async ({
     };
   }
 
-  const file = workspace.files.id(fileId);
+  const file = await File.findOne({
+    _id: fileId,
+    workspace: workspaceId,
+  });
 
   if (!file) {
     return {
@@ -336,9 +367,20 @@ const deleteWorkspaceFile = async ({
     };
   }
 
-  file.deleteOne();
+  // If this is a folder, delete its entire subtree.
+  if (file.type === "folder") {
+    const prefix = `${file.path}/`;
 
-  await workspace.save();
+    await File.deleteMany({
+      workspace: workspaceId,
+      $or: [
+        { _id: file._id },
+        { path: { $regex: `^${prefix}` } },
+      ],
+    });
+  } else {
+    await file.deleteOne();
+  }
 
   return {
     success: true,

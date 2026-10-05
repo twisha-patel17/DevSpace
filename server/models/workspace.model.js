@@ -1,28 +1,5 @@
 const mongoose = require("mongoose");
 
-const workspaceFileSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    language: {
-      type: String,
-      required: true,
-    },
-
-    content: {
-      type: String,
-      default: "",
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
 const workspaceSchema = new mongoose.Schema(
   {
     name: {
@@ -88,11 +65,6 @@ const workspaceSchema = new mongoose.Schema(
         },
       },
     ],
-
-    files: {
-      type: [workspaceFileSchema],
-      default: [],
-    },
 
     lastOpenedAt: {
       type: Date,

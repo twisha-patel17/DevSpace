@@ -299,26 +299,54 @@ const createWorkspaceFileController = async (
       name,
       language,
       content,
+      path,
+      type,
+      parent,
     } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
-        message: "File name is required",
+        message: "File or folder name is required",
       });
     }
 
-    if (!language || !language.trim()) {
+    const fileType = type || "file";
+
+    if (!["file", "folder"].includes(fileType)) {
       return res.status(400).json({
-        message: "File language is required",
+        message: "Invalid file type",
+      });
+    }
+
+    if (
+      fileType === "file" &&
+      language !== undefined &&
+      typeof language !== "string"
+    ) {
+      return res.status(400).json({
+        message: "Invalid file language",
       });
     }
 
     const file = await createWorkspaceFile({
       workspaceId,
       userId: req.user.userId,
+
       name: name.trim(),
-      language: language.trim(),
-      content: content || "",
+
+      language:
+        fileType === "file"
+          ? language?.trim() || null
+          : null,
+
+      content:
+        fileType === "file"
+          ? content || ""
+          : "",
+
+      path: path?.trim() || name.trim(),
+      type: fileType,
+      parent: parent || null,
     });
 
     if (!file) {
@@ -335,7 +363,10 @@ const createWorkspaceFileController = async (
     }
 
     return res.status(201).json({
-      message: "File created successfully",
+      message:
+        fileType === "folder"
+          ? "Folder created successfully"
+          : "File created successfully",
       file,
     });
   } catch (error) {
@@ -343,6 +374,13 @@ const createWorkspaceFileController = async (
       "Create workspace file error:",
       error
     );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message:
+          "A file or folder with this path already exists",
+      });
+    }
 
     return res.status(500).json({
       message: "Failed to create file",
@@ -364,14 +402,48 @@ const updateWorkspaceFileController = async (
       name,
       language,
       content,
+      path,
     } = req.body;
 
     if (
       name !== undefined &&
-      !name.trim()
+      (
+        typeof name !== "string" ||
+        !name.trim()
+      )
     ) {
       return res.status(400).json({
-        message: "File name cannot be empty",
+        message: "File or folder name cannot be empty",
+      });
+    }
+
+    if (
+      language !== undefined &&
+      typeof language !== "string"
+    ) {
+      return res.status(400).json({
+        message: "Invalid file language",
+      });
+    }
+
+    if (
+      content !== undefined &&
+      typeof content !== "string"
+    ) {
+      return res.status(400).json({
+        message: "Invalid file content",
+      });
+    }
+
+    if (
+      path !== undefined &&
+      (
+        typeof path !== "string" ||
+        !path.trim()
+      )
+    ) {
+      return res.status(400).json({
+        message: "File path cannot be empty",
       });
     }
 
@@ -379,9 +451,19 @@ const updateWorkspaceFileController = async (
       workspaceId,
       userId: req.user.userId,
       fileId,
-      name,
+
+      name:
+        name !== undefined
+          ? name.trim()
+          : undefined,
+
       language,
       content,
+
+      path:
+        path !== undefined
+          ? path.trim()
+          : undefined,
     });
 
     if (!file) {
@@ -412,6 +494,13 @@ const updateWorkspaceFileController = async (
       "Update workspace file error:",
       error
     );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message:
+          "A file or folder with this path already exists",
+      });
+    }
 
     return res.status(500).json({
       message: "Failed to update file",
