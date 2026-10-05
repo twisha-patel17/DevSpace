@@ -12,6 +12,10 @@ const {
   createWorkspaceFile,
   updateWorkspaceFile,
   deleteWorkspaceFile,
+
+  addWorkspaceMember,
+  updateWorkspaceMemberRole,
+  removeWorkspaceMember,
 } = require("../services/workspace.service");
 
 const createWorkspaceController = async (req, res) => {
@@ -558,6 +562,212 @@ const deleteWorkspaceFileController = async (
   }
 };
 
+const addWorkspaceMemberController = async (
+  req,
+  res
+) => {
+  try {
+    const { workspaceId } = req.params;
+
+    const {
+      userId: memberUserId,
+      role,
+    } = req.body;
+
+    if (!memberUserId) {
+      return res.status(400).json({
+        message: "User ID is required",
+      });
+    }
+
+    if (!role) {
+      return res.status(400).json({
+        message: "Member role is required",
+      });
+    }
+
+    if (!["editor", "viewer"].includes(role)) {
+      return res.status(400).json({
+        message: "Invalid member role",
+      });
+    }
+
+    const workspace = await addWorkspaceMember({
+      workspaceId,
+      userId: req.user.userId,
+      memberUserId,
+      role,
+    });
+
+    if (!workspace) {
+      return res.status(404).json({
+        message:
+          "Workspace not found or you are not the owner",
+      });
+    }
+
+    if (workspace.invalidRole) {
+      return res.status(400).json({
+        message: "Invalid member role",
+      });
+    }
+
+    if (workspace.userNotFound) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    if (workspace.ownerCannotBeAdded) {
+      return res.status(400).json({
+        message: "Workspace owner is already a member",
+      });
+    }
+
+    if (workspace.alreadyMember) {
+      return res.status(409).json({
+        message: "User is already a workspace member",
+      });
+    }
+
+    return res.status(201).json({
+      message: "Member added successfully",
+      workspace,
+    });
+  } catch (error) {
+    console.error(
+      "Add workspace member error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to add workspace member",
+    });
+  }
+};
+
+const updateWorkspaceMemberRoleController = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      workspaceId,
+      memberUserId,
+    } = req.params;
+
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        message: "Member role is required",
+      });
+    }
+
+    if (!["editor", "viewer"].includes(role)) {
+      return res.status(400).json({
+        message: "Invalid member role",
+      });
+    }
+
+    const workspace = await updateWorkspaceMemberRole({
+      workspaceId,
+      userId: req.user.userId,
+      memberUserId,
+      role,
+    });
+
+    if (!workspace) {
+      return res.status(404).json({
+        message:
+          "Workspace not found or you are not the owner",
+      });
+    }
+
+    if (workspace.invalidRole) {
+      return res.status(400).json({
+        message: "Invalid member role",
+      });
+    }
+
+    if (workspace.ownerCannotBeModified) {
+      return res.status(400).json({
+        message: "Workspace owner role cannot be modified",
+      });
+    }
+
+    if (workspace.memberNotFound) {
+      return res.status(404).json({
+        message: "Workspace member not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Member role updated successfully",
+      workspace,
+    });
+  } catch (error) {
+    console.error(
+      "Update workspace member role error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to update member role",
+    });
+  }
+};
+
+const removeWorkspaceMemberController = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      workspaceId,
+      memberUserId,
+    } = req.params;
+
+    const result = await removeWorkspaceMember({
+      workspaceId,
+      userId: req.user.userId,
+      memberUserId,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        message:
+          "Workspace not found or you are not the owner",
+      });
+    }
+
+    if (result.ownerCannotBeRemoved) {
+      return res.status(400).json({
+        message: "Workspace owner cannot be removed",
+      });
+    }
+
+    if (result.memberNotFound) {
+      return res.status(404).json({
+        message: "Workspace member not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Member removed successfully",
+    });
+  } catch (error) {
+    console.error(
+      "Remove workspace member error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to remove workspace member",
+    });
+  }
+};
+
 module.exports = {
   createWorkspaceController,
   getWorkspacesController,
@@ -572,4 +782,8 @@ module.exports = {
   createWorkspaceFileController,
   updateWorkspaceFileController,
   deleteWorkspaceFileController,
+
+  addWorkspaceMemberController,
+  updateWorkspaceMemberRoleController,
+  removeWorkspaceMemberController,
 };

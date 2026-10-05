@@ -14,6 +14,10 @@ const {
   createWorkspaceFileController,
   updateWorkspaceFileController,
   deleteWorkspaceFileController,
+
+  addWorkspaceMemberController,
+  updateWorkspaceMemberRoleController,
+  removeWorkspaceMemberController,
 } = require("../controllers/workspace.controller");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -80,6 +84,21 @@ router.patch(
 router.delete(
   "/:workspaceId",
   deleteWorkspaceController
+);
+
+router.post(
+  "/:workspaceId/members",
+  addWorkspaceMemberController
+);
+
+router.patch(
+  "/:workspaceId/members/:memberUserId",
+  updateWorkspaceMemberRoleController
+);
+
+router.delete(
+  "/:workspaceId/members/:memberUserId",
+  removeWorkspaceMemberController
 );
 
 module.exports = router;

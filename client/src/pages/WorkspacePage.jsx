@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -17,6 +22,12 @@ import {
 import Editor from "@monaco-editor/react";
 
 import api from "../api/axios";
+import useAuthStore from "../store/authStore";
+
+import socket, {
+  connectSocket,
+  disconnectSocket,
+} from "../socket";
 
 const DEFAULT_CODE = {
   javascript: `// Welcome to DevSpace
@@ -156,6 +167,10 @@ const WorkspacePage = () => {
   const { workspaceId } = useParams();
   const navigate = useNavigate();
 
+  const accessToken = useAuthStore(
+    (state) => state.accessToken
+  );
+
   const [workspace, setWorkspace] = useState(null);
 
   const [files, setFiles] = useState([]);
@@ -173,6 +188,20 @@ const WorkspacePage = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+
+  /*
+   * --------------------------------------------------
+   * REMOTE EDIT TRACKING
+   * --------------------------------------------------
+   *
+   * When another user changes the file, Monaco
+   * receives the new value through setCode().
+   *
+   * This ref allows handleEditorChange() to know
+   * that the change came from Socket.IO instead
+   * of the local user.
+   */
+  const isRemoteUpdate = useRef(false);
 
   const activeFile = useMemo(() => {
     return (
@@ -198,6 +227,179 @@ const WorkspacePage = () => {
     return getDefaultFileName(workspace);
   }, [activeFile, workspace]);
 
+  /*
+   * --------------------------------------------------
+   * SOCKET CONNECTION
+   * --------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!accessToken || !workspaceId) {
+      return;
+    }
+
+    connectSocket(accessToken);
+
+    const handleConnect = () => {
+      console.log(
+        "Socket connected:",
+        socket.id
+      );
+
+      socket.emit("workspace:join", {
+        workspaceId,
+      });
+    };
+
+    const handleWorkspaceJoined = (data) => {
+      console.log(
+        "Joined workspace:",
+        data.workspaceId
+      );
+    };
+
+    const handleWorkspaceError = (data) => {
+      console.error(
+        "Workspace socket error:",
+        data.message
+      );
+    };
+
+    socket.on(
+      "connect",
+      handleConnect
+    );
+
+    socket.on(
+      "workspace:joined",
+      handleWorkspaceJoined
+    );
+
+    socket.on(
+      "workspace:error",
+      handleWorkspaceError
+    );
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      socket.emit("workspace:leave", {
+        workspaceId,
+      });
+
+      socket.off(
+        "connect",
+        handleConnect
+      );
+
+      socket.off(
+        "workspace:joined",
+        handleWorkspaceJoined
+      );
+
+      socket.off(
+        "workspace:error",
+        handleWorkspaceError
+      );
+
+      disconnectSocket();
+    };
+  }, [accessToken, workspaceId]);
+
+  /*
+   * --------------------------------------------------
+   * RECEIVE REMOTE FILE CHANGES
+   * --------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!workspaceId) {
+      return;
+    }
+
+    const handleFileChanged = (data) => {
+      const {
+        fileId,
+        content,
+        userId,
+      } = data;
+
+      if (!fileId) {
+        return;
+      }
+
+      console.log(
+        "Received file change:",
+        fileId,
+        "from user:",
+        userId
+      );
+
+      /*
+       * Update the file in local state.
+       */
+
+      setFiles((currentFiles) =>
+        currentFiles.map((file) =>
+          file._id === fileId
+            ? {
+                ...file,
+                content,
+              }
+            : file
+        )
+      );
+
+      /*
+       * If this is the currently open file,
+       * update Monaco.
+       */
+
+      if (fileId === activeFileId) {
+        isRemoteUpdate.current = true;
+
+        setCode(content);
+      }
+    };
+
+    const handleFileError = (data) => {
+      console.error(
+        "File socket error:",
+        data.message
+      );
+    };
+
+    socket.on(
+      "file:changed",
+      handleFileChanged
+    );
+
+    socket.on(
+      "file:error",
+      handleFileError
+    );
+
+    return () => {
+      socket.off(
+        "file:changed",
+        handleFileChanged
+      );
+
+      socket.off(
+        "file:error",
+        handleFileError
+      );
+    };
+  }, [workspaceId, activeFileId]);
+
+  /*
+   * --------------------------------------------------
+   * FETCH WORKSPACE
+   * --------------------------------------------------
+   */
+
   useEffect(() => {
     const fetchWorkspace = async () => {
       try {
@@ -205,9 +407,10 @@ const WorkspacePage = () => {
         setFilesLoading(true);
         setError("");
 
-        const workspaceResponse = await api.get(
-          `/api/workspaces/${workspaceId}`
-        );
+        const workspaceResponse =
+          await api.get(
+            `/api/workspaces/${workspaceId}`
+          );
 
         const fetchedWorkspace =
           workspaceResponse.data.workspace;
@@ -215,9 +418,10 @@ const WorkspacePage = () => {
         setWorkspace(fetchedWorkspace);
 
         try {
-          const openedResponse = await api.patch(
-            `/api/workspaces/${workspaceId}/opened`
-          );
+          const openedResponse =
+            await api.patch(
+              `/api/workspaces/${workspaceId}/opened`
+            );
 
           if (openedResponse.data.workspace) {
             setWorkspace(
@@ -231,9 +435,10 @@ const WorkspacePage = () => {
           );
         }
 
-        const filesResponse = await api.get(
-          `/api/workspaces/${workspaceId}/files`
-        );
+        const filesResponse =
+          await api.get(
+            `/api/workspaces/${workspaceId}/files`
+          );
 
         let fetchedFiles =
           filesResponse.data.files || [];
@@ -293,20 +498,29 @@ const WorkspacePage = () => {
     }
   }, [workspaceId]);
 
+  /*
+   * --------------------------------------------------
+   * FILE SELECT
+   * --------------------------------------------------
+   */
+
   const handleFileSelect = (file) => {
     if (file._id === activeFileId) {
       return;
     }
 
     if (isDirty) {
-      const shouldSwitch = window.confirm(
-        "You have unsaved changes. Switch files anyway?"
-      );
+      const shouldSwitch =
+        window.confirm(
+          "You have unsaved changes. Switch files anyway?"
+        );
 
       if (!shouldSwitch) {
         return;
       }
     }
+
+    isRemoteUpdate.current = false;
 
     setActiveFileId(file._id);
     setCode(file.content || "");
@@ -314,11 +528,60 @@ const WorkspacePage = () => {
     setOutput("");
   };
 
+  /*
+   * --------------------------------------------------
+   * EDITOR CHANGE
+   * --------------------------------------------------
+   */
+
   const handleEditorChange = (value) => {
-    setCode(value ?? "");
+    const newContent = value ?? "";
+
+    /*
+     * Monaco can trigger onChange when the value
+     * changes programmatically.
+     *
+     * If this was caused by a remote Socket.IO
+     * update, don't treat it as a local edit and
+     * don't broadcast it again.
+     */
+
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+
+      setCode(newContent);
+
+      return;
+    }
+
+    /*
+     * Local change
+     */
+
+    setCode(newContent);
     setIsDirty(true);
     setOutput("");
+
+    if (
+      !socket.connected ||
+      !workspaceId ||
+      !activeFileId
+    ) {
+      return;
+    }
+
+    socket.emit("file:change", {
+      workspaceId,
+      fileId: activeFileId,
+      content: newContent,
+    });
   };
+
+  /*
+   * --------------------------------------------------
+   * MANUAL SAVE
+   * --------------------------------------------------
+   */
 
   const handleSave = async () => {
     if (!activeFile || isSaving) {
@@ -362,6 +625,12 @@ const WorkspacePage = () => {
       setIsSaving(false);
     }
   };
+
+  /*
+   * --------------------------------------------------
+   * RUN CODE
+   * --------------------------------------------------
+   */
 
   const handleRun = async () => {
     if (!activeFile || isRunning) {
@@ -431,9 +700,21 @@ const WorkspacePage = () => {
     }
   };
 
+  /*
+   * --------------------------------------------------
+   * BACK
+   * --------------------------------------------------
+   */
+
   const handleBack = () => {
     navigate("/recent");
   };
+
+  /*
+   * --------------------------------------------------
+   * LOADING STATE
+   * --------------------------------------------------
+   */
 
   if (loading) {
     return (
@@ -444,6 +725,12 @@ const WorkspacePage = () => {
       </div>
     );
   }
+
+  /*
+   * --------------------------------------------------
+   * ERROR STATE
+   * --------------------------------------------------
+   */
 
   if (error || !workspace) {
     return (
@@ -480,6 +767,12 @@ const WorkspacePage = () => {
       </div>
     );
   }
+
+  /*
+   * --------------------------------------------------
+   * PAGE
+   * --------------------------------------------------
+   */
 
   return (
     <div

@@ -1,5 +1,6 @@
 const Workspace = require("../models/workspace.model");
 const File = require("../models/file.model");
+const User = require("../models/user.model");
 
 const createWorkspace = async ({
   userId,
@@ -387,6 +388,161 @@ const deleteWorkspaceFile = async ({
   };
 };
 
+const addWorkspaceMember = async ({
+  workspaceId,
+  userId,
+  memberUserId,
+  role,
+}) => {
+  const workspace = await Workspace.findOne({
+    _id: workspaceId,
+    owner: userId,
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  if (!["editor", "viewer"].includes(role)) {
+    return {
+      invalidRole: true,
+    };
+  }
+
+  const memberUser = await User.findById(memberUserId);
+
+  if (!memberUser) {
+    return {
+      userNotFound: true,
+    };
+  }
+
+  // Owner is already a member.
+  if (workspace.owner.toString() === memberUserId.toString()) {
+    return {
+      ownerCannotBeAdded: true,
+    };
+  }
+
+  const existingMember = workspace.members.find(
+    (member) =>
+      member.user &&
+      member.user.toString() === memberUserId.toString()
+  );
+
+  if (existingMember) {
+    return {
+      alreadyMember: true,
+    };
+  }
+
+  workspace.members.push({
+    user: memberUserId,
+    role,
+  });
+
+  await workspace.save();
+
+  await workspace.populate(
+    "members.user",
+    "username email avatar"
+  );
+
+  return workspace;
+};
+
+const updateWorkspaceMemberRole = async ({
+  workspaceId,
+  userId,
+  memberUserId,
+  role,
+}) => {
+  const workspace = await Workspace.findOne({
+    _id: workspaceId,
+    owner: userId,
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  if (!["editor", "viewer"].includes(role)) {
+    return {
+      invalidRole: true,
+    };
+  }
+
+  if (workspace.owner.toString() === memberUserId.toString()) {
+    return {
+      ownerCannotBeModified: true,
+    };
+  }
+
+  const member = workspace.members.find(
+    (member) =>
+      member.user &&
+      member.user.toString() === memberUserId.toString()
+  );
+
+  if (!member) {
+    return {
+      memberNotFound: true,
+    };
+  }
+
+  member.role = role;
+
+  await workspace.save();
+
+  await workspace.populate(
+    "members.user",
+    "username email avatar"
+  );
+
+  return workspace;
+};
+
+const removeWorkspaceMember = async ({
+  workspaceId,
+  userId,
+  memberUserId,
+}) => {
+  const workspace = await Workspace.findOne({
+    _id: workspaceId,
+    owner: userId,
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  if (workspace.owner.toString() === memberUserId.toString()) {
+    return {
+      ownerCannotBeRemoved: true,
+    };
+  }
+
+  const memberIndex = workspace.members.findIndex(
+    (member) =>
+      member.user &&
+      member.user.toString() === memberUserId.toString()
+  );
+
+  if (memberIndex === -1) {
+    return {
+      memberNotFound: true,
+    };
+  }
+
+  workspace.members.splice(memberIndex, 1);
+
+  await workspace.save();
+
+  return {
+    success: true,
+  };
+};
+
 module.exports = {
   createWorkspace,
   getUserWorkspaces,
@@ -401,4 +557,7 @@ module.exports = {
   createWorkspaceFile,
   updateWorkspaceFile,
   deleteWorkspaceFile,
+  addWorkspaceMember,
+  updateWorkspaceMemberRole,
+  removeWorkspaceMember,
 };

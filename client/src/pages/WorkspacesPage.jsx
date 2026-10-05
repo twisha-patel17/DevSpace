@@ -1,1877 +1,661 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
-  Search,
-  Plus,
-  SlidersHorizontal,
-  ChevronDown,
-  FolderKanban,
+  ArrowLeft,
+  Play,
+  Save,
   Users,
-  Clock3,
-  Code2,
-  MoreVertical,
-  ExternalLink,
-  Pencil,
-  Copy,
-  Trash2,
-  Check,
-  X,
+  Terminal,
+  Folder,
+  FileCode2,
+  ChevronDown,
+  MoreHorizontal,
 } from "lucide-react";
 
-import {
-  useWorkspaces,
-  useCreateWorkspace,
-  useDeleteWorkspace,
-} from "../lib/workspace.queries";
+import Editor from "@monaco-editor/react";
 
-const languageStyles = {
-  JavaScript: {
-    short: "JS",
-    className: "bg-[#302f1c] text-[#e5c82d]",
-  },
+import api from "../api/axios";
+import useAuthStore from "../store/authStore";
 
-  React: {
-    short: "RE",
-    className: "bg-[#202c30] text-[#63c5d8]",
-  },
+import socket, {
+  connectSocket,
+  disconnectSocket,
+} from "../socket";
 
-  Python: {
-    short: "PY",
-    className: "bg-[#1c3029] text-[#65bc8d]",
-  },
+const WorkspacePage = () => {
+  const { workspaceId } = useParams();
+  const navigate = useNavigate();
 
-  "C++": {
-    short: "C++",
-    className: "bg-[#25203a] text-[#a67adb]",
-  },
-
-  "Node.js": {
-    short: "JS",
-    className: "bg-[#24301f] text-[#8bcf65]",
-  },
-
-  Blank: {
-    short: "—",
-    className: "bg-[#252629] text-zinc-300",
-  },
-};
-
-const templateLanguageMap = {
-  blank: "Blank",
-  javascript: "JavaScript",
-  react: "React",
-  python: "Python",
-  cpp: "C++",
-};
-
-const AvatarStack = ({ count }) => {
-  const avatars = ["TP", "RK", "PS", "AM"];
-
-  const avatarStyles = [
-    "bg-[#df9758] text-[#17110d]",
-    "bg-[#73a8e9] text-[#111214]",
-    "bg-[#a67adb] text-[#111214]",
-    "bg-[#65bc8d] text-[#111214]",
-  ];
-
-  return (
-    <div className="flex items-center">
-      {avatars
-        .slice(0, Math.min(count, 4))
-        .map((avatar, index) => (
-          <span
-            key={`${avatar}-${index}`}
-            className={`
-              flex h-6 w-6
-              items-center justify-center
-              rounded-full
-              border-2 border-[#111214]
-              text-[7px] font-bold
-              ${index !== 0 ? "-ml-1.5" : ""}
-              ${avatarStyles[index]}
-            `}
-          >
-            {avatar}
-          </span>
-        ))}
-
-      {count > 4 && (
-        <span
-          className="
-            -ml-1.5
-            flex h-6 w-6
-            items-center justify-center
-            rounded-full
-            border-2 border-[#111214]
-            bg-[#252629]
-            text-[7px] font-semibold
-            text-zinc-400
-          "
-        >
-          +{count - 4}
-        </span>
-      )}
-    </div>
+  const accessToken = useAuthStore(
+    (state) => state.accessToken
   );
-};
 
-const CreateWorkspaceModal = ({
-  isOpen,
-  onClose,
-  onCreate,
-  isCreating,
-}) => {
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    template: "blank",
-    language: "Blank",
-    visibility: "private",
-  });
+  const [workspace, setWorkspace] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [activeFileId, setActiveFileId] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(true);
 
   const [error, setError] = useState("");
 
-  if (!isOpen) {
-    return null;
-  }
+  const [code, setCode] = useState("");
+  const [output, setOutput] = useState("");
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
 
-    setFormData((current) => {
-     
-      if (name === "template") {
-        return {
-          ...current,
-          template: value,
-          language:
-            templateLanguageMap[value] || "Blank",
-        };
+  useEffect(() => {
+    if (!accessToken || !workspaceId) {
+      return;
+    }
+
+    connectSocket(accessToken);
+
+    const handleConnect = () => {
+      console.log(
+        "Socket connected:",
+        socket.id
+      );
+
+      socket.emit("workspace:join", {
+        workspaceId,
+      });
+    };
+
+    const handleWorkspaceJoined = (data) => {
+      console.log(
+        "Joined workspace:",
+        data.workspaceId
+      );
+    };
+
+    const handleWorkspaceError = (data) => {
+      console.error(
+        "Workspace socket error:",
+        data.message
+      );
+    };
+
+    socket.on("connect", handleConnect);
+
+    socket.on(
+      "workspace:joined",
+      handleWorkspaceJoined
+    );
+
+    socket.on(
+      "workspace:error",
+      handleWorkspaceError
+    );
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      socket.emit("workspace:leave", {
+        workspaceId,
+      });
+
+      socket.off("connect", handleConnect);
+
+      socket.off(
+        "workspace:joined",
+        handleWorkspaceJoined
+      );
+
+      socket.off(
+        "workspace:error",
+        handleWorkspaceError
+      );
+
+      disconnectSocket();
+    };
+  }, [accessToken, workspaceId]);
+
+
+  useEffect(() => {
+    const fetchWorkspace = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const workspaceResponse = await api.get(
+          `/workspaces/${workspaceId}`
+        );
+
+        setWorkspace(workspaceResponse.data.workspace);
+
+        try {
+          await api.patch(
+            `/workspaces/${workspaceId}/opened`
+          );
+        } catch (openedError) {
+          console.error(
+            "Failed to mark workspace as opened:",
+            openedError
+          );
+        }
+
+        setFilesLoading(true);
+
+        const filesResponse = await api.get(
+          `/workspaces/${workspaceId}/files`
+        );
+
+        let workspaceFiles =
+          filesResponse.data.files || [];
+
+        if (workspaceFiles.length === 0) {
+          try {
+            const createResponse = await api.post(
+              `/workspaces/${workspaceId}/files`,
+              {
+                name: "App.jsx",
+                path: "App.jsx",
+                type: "file",
+                language: "javascript",
+                content:
+                  'export default function App() {\n  return <h1>Hello DevSpace</h1>;\n}',
+              }
+            );
+
+            workspaceFiles = [
+              createResponse.data.file,
+            ];
+          } catch (createError) {
+            console.error(
+              "Failed to create default file:",
+              createError
+            );
+          }
+        }
+
+        setFiles(workspaceFiles);
+
+        if (workspaceFiles.length > 0) {
+          const firstFile = workspaceFiles.find(
+            (file) => file.type === "file"
+          );
+
+          if (firstFile) {
+            setActiveFileId(firstFile._id);
+            setCode(firstFile.content || "");
+            setIsDirty(false);
+          }
+        }
+      } catch (err) {
+        console.error(
+          "Failed to load workspace:",
+          err
+        );
+
+        setError(
+          err.response?.data?.message ||
+            "Failed to load workspace"
+        );
+      } finally {
+        setLoading(false);
+        setFilesLoading(false);
       }
+    };
 
-      return {
-        ...current,
-        [name]: value,
-      };
-    });
+    if (workspaceId) {
+      fetchWorkspace();
+    }
+  }, [workspaceId]);
 
-    setError("");
+
+  const activeFile = useMemo(() => {
+    return (
+      files.find(
+        (file) => file._id === activeFileId
+      ) || null
+    );
+  }, [files, activeFileId]);
+
+  const editorLanguage = useMemo(() => {
+    if (!activeFile) {
+      return "javascript";
+    }
+
+    if (activeFile.language) {
+      return activeFile.language;
+    }
+
+    const extension =
+      activeFile.name
+        ?.split(".")
+        .pop()
+        ?.toLowerCase();
+
+    const languageMap = {
+      js: "javascript",
+      jsx: "javascript",
+      ts: "typescript",
+      tsx: "typescript",
+      json: "json",
+      html: "html",
+      css: "css",
+      scss: "scss",
+      md: "markdown",
+      py: "python",
+      cpp: "cpp",
+      c: "c",
+      java: "java",
+    };
+
+    return (
+      languageMap[extension] ||
+      "plaintext"
+    );
+  }, [activeFile]);
+
+  const fileName = activeFile?.name || "No file selected";
+
+  const handleFileSelect = (file) => {
+    if (file.type === "folder") {
+      return;
+    }
+
+    if (isDirty) {
+      const shouldSwitch = window.confirm(
+        "You have unsaved changes. Switch files anyway?"
+      );
+
+      if (!shouldSwitch) {
+        return;
+      }
+    }
+
+    setActiveFileId(file._id);
+    setCode(file.content || "");
+    setIsDirty(false);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleEditorChange = (value) => {
+    setCode(value || "");
+    setIsDirty(true);
+  };
 
-    if (!formData.title.trim()) {
-      setError("Workspace name is required.");
+  const handleSave = async () => {
+    if (!activeFile) {
       return;
     }
 
     try {
-      await onCreate({
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        template: formData.template,
-        language: formData.language,
-        visibility: formData.visibility,
-      });
+      setIsSaving(true);
 
-      setFormData({
-        title: "",
-        description: "",
-        template: "blank",
-        language: "Blank",
-        visibility: "private",
-      });
-
-      setError("");
-      onClose();
-    } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          "Failed to create workspace."
+      const response = await api.patch(
+        `/workspaces/${workspaceId}/files/${activeFile._id}`,
+        {
+          content: code,
+        }
       );
+
+      const updatedFile =
+        response.data.file;
+
+      setFiles((currentFiles) =>
+        currentFiles.map((file) =>
+          file._id === updatedFile._id
+            ? updatedFile
+            : file
+        )
+      );
+
+      setIsDirty(false);
+
+      console.log("File saved successfully");
+    } catch (err) {
+      console.error(
+        "Failed to save file:",
+        err
+      );
+
+      setError(
+        err.response?.data?.message ||
+          "Failed to save file"
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  return (
-    <div
-      className="
-        fixed inset-0 z-[100]
-        flex items-center justify-center
-        bg-black/70
-        px-4
-        backdrop-blur-sm
-      "
-      onClick={onClose}
-    >
-      <div
-        className="
-          w-full max-w-[480px]
-          overflow-hidden
-          rounded-2xl
-          border border-white/[0.08]
-          bg-[#111214]
-          shadow-[0_25px_80px_rgba(0,0,0,0.55)]
-        "
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* HEADER */}
+  const handleRun = async () => {
+    if (!activeFile) {
+      return;
+    }
 
-        <div
-          className="
-            flex items-start justify-between
-            border-b border-white/[0.06]
-            px-5 py-4
-          "
-        >
-          <div>
-            <h2
-              className="
-                text-[15px]
-                font-semibold
-                tracking-[-0.02em]
-                text-zinc-100
-              "
-            >
-              New Workspace
-            </h2>
+    try {
+      setIsRunning(true);
+      setOutput("");
 
-            <p
-              className="
-                mt-1
-                text-[10px]
-                text-zinc-600
-              "
-            >
-              Create a new collaborative coding workspace.
-            </p>
-          </div>
+      const response = await api.post(
+        "/execution/run",
+        {
+          language: editorLanguage,
+          code,
+          stdin: "",
+        }
+      );
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="
-              flex h-7 w-7
-              items-center justify-center
-              rounded-md
-              text-zinc-600
-              transition-colors
-              hover:bg-white/[0.06]
-              hover:text-zinc-300
-            "
-          >
-            <X size={15} />
-          </button>
-        </div>
+      setOutput(
+        response.data.output ||
+          response.data.stdout ||
+          "Program finished successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Failed to run code:",
+        err
+      );
 
-        {/* FORM */}
-
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 px-5 py-5">
-            {/* NAME */}
-
-            <div>
-              <label
-                className="
-                  mb-1.5 block
-                  text-[10px]
-                  font-medium
-                  text-zinc-400
-                "
-              >
-                Workspace name
-              </label>
-
-              <input
-                type="text"
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                placeholder="e.g. DevSpace"
-                autoFocus
-                className="
-                  h-10 w-full
-                  rounded-lg
-                  border border-white/[0.08]
-                  bg-[#0b0c0d]
-                  px-3
-                  text-[11px]
-                  text-zinc-200
-                  outline-none
-                  placeholder:text-zinc-700
-                  transition-all
-                  focus:border-[#dc9458]/40
-                  focus:ring-4
-                  focus:ring-[#dc9458]/[0.04]
-                "
-              />
-            </div>
-
-            {/* DESCRIPTION */}
-
-            <div>
-              <label
-                className="
-                  mb-1.5 block
-                  text-[10px]
-                  font-medium
-                  text-zinc-400
-                "
-              >
-                Description
-
-                <span className="ml-1 text-zinc-700">
-                  (optional)
-                </span>
-              </label>
-
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                placeholder="What are you building?"
-                rows={3}
-                className="
-                  w-full
-                  resize-none
-                  rounded-lg
-                  border border-white/[0.08]
-                  bg-[#0b0c0d]
-                  px-3 py-2.5
-                  text-[11px]
-                  leading-4
-                  text-zinc-200
-                  outline-none
-                  placeholder:text-zinc-700
-                  transition-all
-                  focus:border-[#dc9458]/40
-                  focus:ring-4
-                  focus:ring-[#dc9458]/[0.04]
-                "
-              />
-            </div>
-
-            {/* LANGUAGE + VISIBILITY */}
-
-            <div
-              className="
-                grid grid-cols-1
-                gap-3
-                sm:grid-cols-2
-              "
-            >
-              {/* LANGUAGE */}
-
-              <div>
-                <label
-                  className="
-                    mb-1.5 block
-                    text-[10px]
-                    font-medium
-                    text-zinc-400
-                  "
-                >
-                  Language
-                </label>
-
-                <select
-                  name="language"
-                  value={formData.language}
-                  onChange={handleChange}
-                  className="
-                    h-10 w-full
-                    rounded-lg
-                    border border-white/[0.08]
-                    bg-[#0b0c0d]
-                    px-3
-                    text-[11px]
-                    text-zinc-300
-                    outline-none
-                    focus:border-[#dc9458]/40
-                  "
-                >
-                  <option value="JavaScript">
-                    JavaScript
-                  </option>
-
-                  <option value="React">
-                    React
-                  </option>
-
-                  <option value="Python">
-                    Python
-                  </option>
-
-                  <option value="C++">
-                    C++
-                  </option>
-
-                  <option value="Node.js">
-                    Node.js
-                  </option>
-
-                  <option value="Blank">
-                    Blank
-                  </option>
-                </select>
-              </div>
-
-              {/* VISIBILITY */}
-
-              <div>
-                <label
-                  className="
-                    mb-1.5 block
-                    text-[10px]
-                    font-medium
-                    text-zinc-400
-                  "
-                >
-                  Visibility
-                </label>
-
-                <select
-                  name="visibility"
-                  value={formData.visibility}
-                  onChange={handleChange}
-                  className="
-                    h-10 w-full
-                    rounded-lg
-                    border border-white/[0.08]
-                    bg-[#0b0c0d]
-                    px-3
-                    text-[11px]
-                    text-zinc-300
-                    outline-none
-                    focus:border-[#dc9458]/40
-                  "
-                >
-                  <option value="private">
-                    Private
-                  </option>
-
-                  <option value="public">
-                    Public
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            {/* TEMPLATE */}
-
-            <div>
-              <label
-                className="
-                  mb-1.5 block
-                  text-[10px]
-                  font-medium
-                  text-zinc-400
-                "
-              >
-                Template
-              </label>
-
-              <select
-                name="template"
-                value={formData.template}
-                onChange={handleChange}
-                className="
-                  h-10 w-full
-                  rounded-lg
-                  border border-white/[0.08]
-                  bg-[#0b0c0d]
-                  px-3
-                  text-[11px]
-                  text-zinc-300
-                  outline-none
-                  focus:border-[#dc9458]/40
-                "
-              >
-                <option value="blank">
-                  Blank Workspace
-                </option>
-
-                <option value="javascript">
-                  JavaScript
-                </option>
-
-                <option value="react">
-                  React
-                </option>
-
-                <option value="python">
-                  Python
-                </option>
-
-                <option value="cpp">
-                  C++
-                </option>
-              </select>
-            </div>
-
-            {/* ERROR */}
-
-            {error && (
-              <div
-                className="
-                  rounded-lg
-                  border border-red-500/20
-                  bg-red-500/[0.06]
-                  px-3 py-2.5
-                  text-[10px]
-                  text-red-400
-                "
-              >
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* FOOTER */}
-
-          <div
-            className="
-              flex items-center justify-end
-              gap-2
-              border-t border-white/[0.06]
-              px-5 py-4
-            "
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              className="
-                h-9
-                rounded-lg
-                border border-white/[0.07]
-                bg-white/[0.02]
-                px-4
-                text-[10px]
-                font-medium
-                text-zinc-400
-                transition-colors
-                hover:bg-white/[0.05]
-                hover:text-zinc-200
-              "
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={isCreating}
-              className="
-                flex h-9
-                items-center
-                justify-center
-                gap-1.5
-                rounded-lg
-                bg-[#dc9458]
-                px-4
-                text-[10px]
-                font-semibold
-                text-[#17110d]
-                transition-all
-                hover:bg-[#e5a067]
-                disabled:cursor-not-allowed
-                disabled:opacity-50
-              "
-            >
-              {isCreating ? (
-                <>
-                  <span
-                    className="
-                      h-3 w-3
-                      animate-spin
-                      rounded-full
-                      border-2
-                      border-[#17110d]/30
-                      border-t-[#17110d]
-                    "
-                  />
-
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus size={13} />
-
-                  Create Workspace
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-const WorkspaceMenu = ({
-  workspace,
-  onClose,
-  onDelete,
-}) => {
-  const navigate = useNavigate();
-
-  const workspaceId = workspace._id;
-
-  const handleOpen = () => {
-    navigate(`/workspaces/${workspaceId}`);
-    onClose();
+      setOutput(
+        err.response?.data?.message ||
+          "Failed to execute code."
+      );
+    } finally {
+      setIsRunning(false);
+    }
   };
 
-  const handleDelete = () => {
-    onDelete(workspaceId);
-    onClose();
+  const handleBack = () => {
+    if (isDirty) {
+      const shouldLeave = window.confirm(
+        "You have unsaved changes. Leave workspace anyway?"
+      );
+
+      if (!shouldLeave) {
+        return;
+      }
+    }
+
+    navigate("/recent");
   };
 
-  return (
-    <div
-      className="
-        absolute right-0 top-9 z-30
-        w-[155px]
-        overflow-hidden
-        rounded-lg
-        border border-white/[0.08]
-        bg-[#18191c]
-        shadow-2xl shadow-black/40
-      "
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* OPEN */}
-
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="
-          flex w-full
-          items-center gap-2.5
-          px-3 py-2.5
-          text-left
-          text-[11px]
-          text-zinc-300
-          transition-colors
-          hover:bg-white/[0.05]
-          hover:text-white
-        "
-      >
-        <ExternalLink
-          size={13}
-          className="text-zinc-500"
-        />
-
-        Open
-      </button>
-
-      <button
-        type="button"
-        className="
-          flex w-full
-          items-center gap-2.5
-          px-3 py-2.5
-          text-left
-          text-[11px]
-          text-zinc-300
-          transition-colors
-          hover:bg-white/[0.05]
-          hover:text-white
-        "
-      >
-        <Pencil
-          size={13}
-          className="text-zinc-500"
-        />
-
-        Rename
-      </button>
-
-      <button
-        type="button"
-        className="
-          flex w-full
-          items-center gap-2.5
-          px-3 py-2.5
-          text-left
-          text-[11px]
-          text-zinc-300
-          transition-colors
-          hover:bg-white/[0.05]
-          hover:text-white
-        "
-      >
-        <Copy
-          size={13}
-          className="text-zinc-500"
-        />
-
-        Duplicate
-      </button>
-
-      <div className="mx-2 border-t border-white/[0.06]" />
-
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={false}
-        className="
-          flex w-full
-          items-center gap-2.5
-          px-3 py-2.5
-          text-left
-          text-[11px]
-          text-red-400
-          transition-colors
-          hover:bg-red-500/[0.06]
-          hover:text-red-300
-        "
-      >
-        <Trash2 size={13} />
-
-        Delete
-      </button>
-    </div>
-  );
-};
-const WorkspaceCard = ({
-  workspace,
-  menuOpen,
-  onMenuToggle,
-  onMenuClose,
-  onDelete,
-}) => {
-  const navigate = useNavigate();
-
-  const language = workspace.language || "Blank";
-
-  const languageInfo =
-    languageStyles[language] ||
-    languageStyles.Blank;
-
-  const collaborators =
-    workspace.members?.length || 1;
-
-  const openWorkspace = () => {
-    navigate(`/workspaces/${workspace._id}`);
-  };
-
-  return (
-    <article
-      className="
-        group
-        relative
-        flex min-h-[220px]
-        flex-col
-        rounded-xl
-        border border-white/[0.075]
-        bg-[#111214]
-        p-5
-        transition-all duration-200
-        hover:-translate-y-0.5
-        hover:border-white/[0.13]
-        hover:bg-[#141517]
-      "
-    >
-      {/* TOP */}
-
-      <div className="flex items-start justify-between">
-        <div
-          className={`
-            flex h-10 w-10
-            items-center justify-center
-            rounded-lg
-            font-mono
-            text-[9px]
-            font-semibold
-            ${languageInfo.className}
-          `}
-        >
-          {languageInfo.short}
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            aria-label={`More options for ${workspace.name}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMenuToggle();
-            }}
-            className="
-              flex h-8 w-8
-              items-center justify-center
-              rounded-md
-              text-zinc-600
-              transition-colors
-              hover:bg-white/[0.06]
-              hover:text-zinc-300
-            "
-          >
-            <MoreVertical size={16} />
-          </button>
-
-          {menuOpen && (
-            <WorkspaceMenu
-              workspace={workspace}
-              onClose={onMenuClose}
-              onDelete={onDelete}
-            />
-          )}
-        </div>
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#09090b] text-zinc-400">
+        Loading workspace...
       </div>
+    );
+  }
 
-      {/* WORKSPACE INFO */}
 
-      <div className="mt-5">
-        <div className="flex items-center gap-2">
-          <h3
-            className="
-              truncate
-              text-[15px]
-              font-semibold
-              tracking-[-0.02em]
-              text-zinc-200
-            "
-          >
-            {workspace.name}
-          </h3>
-
-          <span
-            className="
-              h-1.5 w-1.5
-              shrink-0
-              rounded-full
-              bg-emerald-400
-              shadow-[0_0_6px_rgba(52,211,153,0.35)]
-            "
-          />
-        </div>
-
-        <p
-          className="
-            mt-1.5
-            min-h-[32px]
-            text-[11px]
-            leading-4
-            text-zinc-600
-          "
-        >
-          {workspace.description ||
-            "No description"}
-        </p>
-      </div>
-
-      {/* DETAILS */}
-
-      <div className="mt-auto pt-5">
-        <div
-          className="
-            flex items-center
-            justify-between
-            border-t border-white/[0.05]
-            pt-4
-          "
-        >
-          <div className="flex items-center gap-2">
-            <AvatarStack count={collaborators} />
-
-            <span className="text-[10px] text-zinc-600">
-              {collaborators}{" "}
-              {collaborators === 1
-                ? "member"
-                : "members"}
-            </span>
-          </div>
-
-          <span
-            className="
-              flex items-center gap-1
-              text-[9px]
-              text-zinc-700
-            "
-          >
-            <Clock3 size={11} />
-
-            Recently
-          </span>
-        </div>
+  if (error && !workspace) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#09090b] text-zinc-400">
+        <p>{error}</p>
 
         <button
-          type="button"
-          onClick={openWorkspace}
-          className="
-            mt-4
-            flex h-9 w-full
-            items-center justify-center
-            gap-1.5
-            rounded-lg
-            border border-white/[0.07]
-            bg-white/[0.02]
-            text-[10px]
-            font-medium
-            text-zinc-400
-            transition-all duration-200
-            hover:border-[#dc9458]/25
-            hover:bg-[#dc9458]/[0.07]
-            hover:text-[#dc9458]
-          "
+          onClick={handleBack}
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 transition hover:bg-zinc-800"
         >
-          Open Workspace
-
-          <ExternalLink size={12} />
+          Back
         </button>
       </div>
-    </article>
-  );
-};
-
-const WorkspacesPage = () => {
-  const {
-    data: workspaces = [],
-    isLoading,
-    isError,
-    error,
-  } = useWorkspaces();
-
-  const createWorkspaceMutation =
-    useCreateWorkspace();
-
-  const deleteWorkspaceMutation =
-    useDeleteWorkspace();
-
-  const [search, setSearch] = useState("");
-
-  const [filterOpen, setFilterOpen] =
-    useState(false);
-
-  const [filter, setFilter] = useState("All");
-
-  const [openMenu, setOpenMenu] =
-    useState(null);
-
-  const [createModalOpen, setCreateModalOpen] =
-    useState(false);
-
-  const filteredWorkspaces = useMemo(() => {
-    return workspaces.filter((workspace) => {
-      const searchValue =
-        search.toLowerCase().trim();
-
-      const workspaceName =
-        workspace.name?.toLowerCase() || "";
-
-      const description =
-        workspace.description?.toLowerCase() ||
-        "";
-
-      const language =
-        workspace.language?.toLowerCase() || "";
-
-      const matchesSearch =
-        workspaceName.includes(searchValue) ||
-        description.includes(searchValue) ||
-        language.includes(searchValue);
-
-      const matchesFilter =
-        filter === "All" ||
-        workspace.language === filter;
-
-      return (
-        matchesSearch &&
-        matchesFilter
-      );
-    });
-  }, [workspaces, search, filter]);
-
-  const handleCreateWorkspace = async (
-    workspaceData
-  ) => {
-    await createWorkspaceMutation.mutateAsync({
-      name: workspaceData.title,
-
-      description:
-        workspaceData.description,
-
-      template:
-        workspaceData.template,
-
-      language:
-        workspaceData.language,
-
-      visibility:
-        workspaceData.visibility,
-    });
-  };
-
-  const handleDelete = async (
-    workspaceId
-  ) => {
-    try {
-      await deleteWorkspaceMutation.mutateAsync(
-        workspaceId
-      );
-
-      setOpenMenu(null);
-    } catch (error) {
-      console.error(
-        "Delete workspace error:",
-        error
-      );
-    }
-  };
-
-  const totalWorkspaces =
-    workspaces.length;
-
-  const activeWorkspaces =
-    workspaces.length;
-
-  const totalMembers =
-    workspaces.reduce(
-      (total, workspace) =>
-        total +
-        (workspace.members?.length || 1),
-      0
-    );
-
-  if (isLoading) {
-    return (
-      <main
-        className="
-          min-h-screen
-          bg-[#090a0b]
-          text-zinc-100
-        "
-      >
-        <div
-          className="
-            flex min-h-screen
-            items-center
-            justify-center
-            px-6
-          "
-        >
-          <div className="text-center">
-            <div
-              className="
-                mx-auto
-                h-8 w-8
-                animate-spin
-                rounded-full
-                border-2
-                border-white/[0.08]
-                border-t-[#dc9458]
-              "
-            />
-
-            <p
-              className="
-                mt-4
-                text-[11px]
-                text-zinc-600
-              "
-            >
-              Loading workspaces...
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (isError) {
-    return (
-      <main
-        className="
-          min-h-screen
-          bg-[#090a0b]
-          text-zinc-100
-        "
-      >
-        <div
-          className="
-            flex min-h-screen
-            items-center
-            justify-center
-            px-6
-          "
-        >
-          <div className="text-center">
-            <div
-              className="
-                mx-auto
-                flex h-11 w-11
-                items-center justify-center
-                rounded-xl
-                bg-red-500/[0.08]
-                text-red-400
-              "
-            >
-              <Code2 size={18} />
-            </div>
-
-            <h3
-              className="
-                mt-4
-                text-[13px]
-                font-semibold
-                text-zinc-300
-              "
-            >
-              Failed to load workspaces
-            </h3>
-
-            <p
-              className="
-                mt-1
-                text-[10px]
-                text-zinc-600
-              "
-            >
-              {error?.response?.data?.message ||
-                "Something went wrong."}
-            </p>
-          </div>
-        </div>
-      </main>
     );
   }
 
   return (
-    <>
-      <main
-        className="
-          min-h-screen
-          bg-[#090a0b]
-          text-zinc-100
-        "
-        onClick={() => {
-          setOpenMenu(null);
-          setFilterOpen(false);
-        }}
-      >
-        <div
-          className="
-            px-4
-            pb-14
-            pt-[100px]
-            sm:px-6
-            lg:px-8
-          "
-        >
-          <div
-            className="
-              mx-auto
-              max-w-[1280px]
-            "
+    <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-200">
+     
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d0d0f] px-4">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBack}
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+            title="Back"
           >
-            
-            <section
-              className="
-                mb-8
-                flex flex-col
-                gap-5
-                sm:flex-row
-                sm:items-end
-                sm:justify-between
-              "
+            <ArrowLeft size={18} />
+          </button>
+
+          <div className="h-5 w-px bg-zinc-800" />
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-white">
+                {workspace?.name}
+              </h1>
+
+              <ChevronDown
+                size={14}
+                className="text-zinc-500"
+              />
+            </div>
+
+            <p className="text-xs text-zinc-500">
+              {workspace?.language ||
+                "Blank"}{" "}
+              · {workspace?.visibility}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Collaborators */}
+          <button
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-800 hover:text-white"
+          >
+            <Users size={15} />
+
+            <span>Collaborators</span>
+          </button>
+
+          {/* Save */}
+          <button
+            onClick={handleSave}
+            disabled={
+              !activeFile ||
+              !isDirty ||
+              isSaving
+            }
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Save size={15} />
+
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+
+          {/* Run */}
+          <button
+            onClick={handleRun}
+            disabled={
+              !activeFile || isRunning
+            }
+            className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Play size={15} />
+
+            {isRunning ? "Running..." : "Run"}
+          </button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+       
+        <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-[#0d0d0f]">
+          {/* Explorer Header */}
+          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4">
+            <div className="flex items-center gap-2">
+              <Folder
+                size={15}
+                className="text-zinc-500"
+              />
+
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Explorer
+              </span>
+            </div>
+
+            <button
+              className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+              title="More"
             >
-              <div>
-                <div
-                  className="
-                    mb-2
-                    flex items-center gap-2
-                  "
-                >
-                  <span
-                    className="
-                      h-1.5 w-1.5
-                      rounded-full
-                      bg-emerald-400
-                    "
-                  />
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
 
-                  <span
-                    className="
-                      text-[10px]
-                      font-medium
-                      uppercase
-                      tracking-[0.16em]
-                      text-zinc-600
-                    "
-                  >
-                    Developer Space
-                  </span>
-                </div>
-
-                <h1
-                  className="
-                    text-[25px]
-                    font-bold
-                    tracking-[-0.04em]
-                    text-[#ededee]
-                    sm:text-[28px]
-                  "
-                >
-                  Workspaces
-                </h1>
-
-                <p
-                  className="
-                    mt-1.5
-                    text-[13px]
-                    text-zinc-600
-                  "
-                >
-                  Manage and open your collaborative
-                  coding projects.
-                </p>
+          {/* Files */}
+          <div className="flex-1 overflow-y-auto p-2">
+            {filesLoading ? (
+              <div className="px-2 py-4 text-xs text-zinc-600">
+                Loading files...
               </div>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCreateModalOpen(true);
-                }}
-                className="
-                  flex h-10
-                  w-full
-                  shrink-0
-                  items-center
-                  justify-center
-                  gap-2
-                  rounded-lg
-                  bg-[#dc9458]
-                  px-4
-                  text-[11px]
-                  font-semibold
-                  text-[#17110d]
-                  shadow-[0_4px_20px_rgba(220,148,88,0.08)]
-                  transition-all duration-200
-                  hover:bg-[#e5a067]
-                  hover:shadow-[0_5px_25px_rgba(220,148,88,0.13)]
-                  active:scale-[0.98]
-                  sm:w-auto
-                "
-              >
-                <Plus
-                  size={14}
-                  strokeWidth={2.5}
-                />
-
-                <span>
-                  New Workspace
-                </span>
-              </button>
-            </section>
-
-            <section
-              className="
-                mb-8
-                grid
-                grid-cols-1
-                gap-3
-                sm:grid-cols-3
-              "
-            >
-              {/* TOTAL */}
-
-              <div
-                className="
-                  rounded-xl
-                  border border-white/[0.07]
-                  bg-[#111214]
-                  p-4
-                "
-              >
-                <div
-                  className="
-                    flex items-center
-                    justify-between
-                  "
-                >
-                  <FolderKanban
-                    size={16}
-                    className="text-[#dc9458]"
-                  />
-
-                  <span
-                    className="
-                      text-[9px]
-                      text-zinc-700
-                    "
-                  >
-                    TOTAL
-                  </span>
-                </div>
-
-                <p
-                  className="
-                    mt-4
-                    text-xl
-                    font-bold
-                    text-zinc-200
-                  "
-                >
-                  {totalWorkspaces}
-                </p>
-
-                <p
-                  className="
-                    mt-1
-                    text-[10px]
-                    text-zinc-600
-                  "
-                >
-                  All workspaces
-                </p>
+            ) : files.length === 0 ? (
+              <div className="px-2 py-4 text-xs text-zinc-600">
+                No files
               </div>
+            ) : (
+              <div className="space-y-1">
+                {files.map((file) => {
+                  const isActive =
+                    file._id === activeFileId;
 
-              {/* ACTIVE */}
+                  if (file.type === "folder") {
+                    return (
+                      <div
+                        key={file._id}
+                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500"
+                      >
+                        <Folder size={14} />
 
-              <div
-                className="
-                  rounded-xl
-                  border border-white/[0.07]
-                  bg-[#111214]
-                  p-4
-                "
-              >
-                <div
-                  className="
-                    flex items-center
-                    justify-between
-                  "
-                >
-                  <Code2
-                    size={16}
-                    className="text-[#73a8e9]"
-                  />
+                        <span>
+                          {file.name}
+                        </span>
+                      </div>
+                    );
+                  }
 
-                  <span
-                    className="
-                      text-[9px]
-                      text-zinc-700
-                    "
-                  >
-                    ACTIVE
-                  </span>
-                </div>
-
-                <p
-                  className="
-                    mt-4
-                    text-xl
-                    font-bold
-                    text-zinc-200
-                  "
-                >
-                  {activeWorkspaces}
-                </p>
-
-                <p
-                  className="
-                    mt-1
-                    text-[10px]
-                    text-zinc-600
-                  "
-                >
-                  Currently active
-                </p>
-              </div>
-
-              {/* MEMBERS */}
-
-              <div
-                className="
-                  rounded-xl
-                  border border-white/[0.07]
-                  bg-[#111214]
-                  p-4
-                "
-              >
-                <div
-                  className="
-                    flex items-center
-                    justify-between
-                  "
-                >
-                  <Users
-                    size={16}
-                    className="text-[#a67adb]"
-                  />
-
-                  <span
-                    className="
-                      text-[9px]
-                      text-zinc-700
-                    "
-                  >
-                    MEMBERS
-                  </span>
-                </div>
-
-                <p
-                  className="
-                    mt-4
-                    text-xl
-                    font-bold
-                    text-zinc-200
-                  "
-                >
-                  {totalMembers}
-                </p>
-
-                <p
-                  className="
-                    mt-1
-                    text-[10px]
-                    text-zinc-600
-                  "
-                >
-                  Across workspaces
-                </p>
-              </div>
-            </section>
-
-            <section className="mb-6">
-              <div
-                className="
-                  flex flex-col
-                  gap-3
-                  sm:flex-row
-                "
-              >
-                <div
-                  className="
-                    group
-                    relative
-                    flex-1
-                  "
-                >
-                  <Search
-                    size={15}
-                    strokeWidth={1.8}
-                    className="
-                      pointer-events-none
-                      absolute
-                      left-3.5
-                      top-1/2
-                      -translate-y-1/2
-                      text-zinc-600
-                      transition-colors
-                      group-focus-within:text-[#dc9458]
-                    "
-                  />
-
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) =>
-                      setSearch(e.target.value)
-                    }
-                    onClick={(e) =>
-                      e.stopPropagation()
-                    }
-                    placeholder="Search workspaces..."
-                    className="
-                      h-10 w-full
-                      rounded-lg
-                      border border-white/[0.07]
-                      bg-[#111214]
-                      pl-10 pr-4
-                      text-[11px]
-                      text-zinc-300
-                      outline-none
-                      placeholder:text-zinc-700
-                      transition-all
-                      hover:border-white/[0.11]
-                      focus:border-[#dc9458]/30
-                      focus:bg-[#121315]
-                      focus:ring-4
-                      focus:ring-[#dc9458]/[0.04]
-                    "
-                  />
-                </div>
-
-                {/* FILTER */}
-
-                <div className="relative sm:w-[180px]">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-
-                      setFilterOpen(
-                        (current) => !current
-                      );
-                    }}
-                    className={`
-                      flex h-10 w-full
-                      items-center
-                      justify-between
-                      rounded-lg
-                      border
-                      px-3.5
-                      text-[11px]
-                      transition-all duration-200
-
-                      ${
-                        filterOpen
-                          ? "border-[#dc9458]/30 bg-[#151312] text-zinc-200 ring-4 ring-[#dc9458]/[0.04]"
-                          : "border-white/[0.07] bg-[#111214] text-zinc-400 hover:border-white/[0.12] hover:bg-[#141517] hover:text-zinc-200"
+                  return (
+                    <button
+                      key={file._id}
+                      onClick={() =>
+                        handleFileSelect(file)
                       }
-                    `}
-                  >
-                    <span
-                      className="
-                        flex items-center gap-2.5
-                      "
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
+                        isActive
+                          ? "bg-violet-500/10 text-violet-300"
+                          : "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200"
+                      }`}
                     >
-                      <SlidersHorizontal
+                      <FileCode2
                         size={14}
                         className={
-                          filterOpen
-                            ? "text-[#dc9458]"
-                            : "text-zinc-600"
+                          isActive
+                            ? "text-violet-400"
+                            : "text-zinc-500"
                         }
                       />
 
-                      <span>
-                        {filter === "All"
-                          ? "All workspaces"
-                          : filter}
+                      <span className="truncate">
+                        {file.name}
                       </span>
-                    </span>
 
-                    <ChevronDown
-                      size={14}
-                      className={`
-                        transition-transform duration-200
-
-                        ${
-                          filterOpen
-                            ? "rotate-180 text-[#dc9458]"
-                            : "text-zinc-600"
-                        }
-                      `}
-                    />
-                  </button>
-
-                  {filterOpen && (
-                    <div
-                      className="
-                        absolute
-                        right-0
-                        top-[46px]
-                        z-40
-                        w-full
-                        overflow-hidden
-                        rounded-xl
-                        border border-white/[0.08]
-                        bg-[#17181a]
-                        p-1.5
-                        shadow-[0_20px_50px_rgba(0,0,0,0.45)]
-                      "
-                      onClick={(e) =>
-                        e.stopPropagation()
-                      }
-                    >
-                      <div
-                        className="
-                          px-2.5
-                          pb-1.5
-                          pt-1
-                        "
-                      >
-                        <p
-                          className="
-                            text-[8px]
-                            font-semibold
-                            uppercase
-                            tracking-[0.16em]
-                            text-zinc-700
-                          "
-                        >
-                          Filter by
-                        </p>
-                      </div>
-
-                      {[
-                        {
-                          label: "All workspaces",
-                          value: "All",
-                        },
-                        {
-                          label: "JavaScript",
-                          value: "JavaScript",
-                        },
-                        {
-                          label: "C++",
-                          value: "C++",
-                        },
-                        {
-                          label: "Python",
-                          value: "Python",
-                        },
-                        {
-                          label: "React",
-                          value: "React",
-                        },
-                        {
-                          label: "Node.js",
-                          value: "Node.js",
-                        },
-                        {
-                          label: "Blank",
-                          value: "Blank",
-                        },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => {
-                            setFilter(
-                              option.value
-                            );
-
-                            setFilterOpen(false);
-                          }}
-                          className={`
-                            flex w-full
-                            items-center
-                            justify-between
-                            rounded-lg
-                            px-2.5 py-2
-                            text-left
-                            text-[10px]
-                            transition-all duration-150
-
-                            ${
-                              filter ===
-                              option.value
-                                ? "bg-[#dc9458]/[0.10] text-[#dc9458]"
-                                : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
-                            }
-                          `}
-                        >
-                          <span>
-                            {option.label}
+                      {isActive &&
+                        isDirty && (
+                          <span className="ml-auto text-violet-400">
+                            •
                           </span>
-
-                          {filter ===
-                            option.value && (
-                            <Check
-                              size={12}
-                              strokeWidth={2.5}
-                              className="text-[#dc9458]"
-                            />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        )}
+                    </button>
+                  );
+                })}
               </div>
-
-              <div
-                className="
-                  mt-3
-                  flex items-center
-                  justify-between
-                "
-              >
-                <p
-                  className="
-                    text-[10px]
-                    text-zinc-700
-                  "
-                >
-                  {filteredWorkspaces.length}{" "}
-                  {filteredWorkspaces.length === 1
-                    ? "workspace"
-                    : "workspaces"}
-                </p>
-
-                {(search || filter !== "All") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-
-                      setSearch("");
-                      setFilter("All");
-                    }}
-                    className="
-                      text-[10px]
-                      font-medium
-                      text-[#dc9458]
-                      transition-colors
-                      hover:text-[#e5a067]
-                    "
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            </section>
-
-            {filteredWorkspaces.length > 0 ? (
-              <section
-                className="
-                  grid
-                  gap-3
-                  sm:grid-cols-2
-                  xl:grid-cols-3
-                "
-              >
-                {filteredWorkspaces.map(
-                  (workspace) => (
-                    <WorkspaceCard
-                      key={workspace._id}
-                      workspace={workspace}
-                      menuOpen={
-                        openMenu ===
-                        workspace._id
-                      }
-                      onMenuToggle={() =>
-                        setOpenMenu(
-                          openMenu ===
-                            workspace._id
-                            ? null
-                            : workspace._id
-                        )
-                      }
-                      onMenuClose={() =>
-                        setOpenMenu(null)
-                      }
-                      onDelete={handleDelete}
-                    />
-                  )
-                )}
-              </section>
-            ) : (
-             
-              <section
-                className="
-                  flex min-h-[300px]
-                  flex-col
-                  items-center
-                  justify-center
-                  rounded-xl
-                  border border-dashed
-                  border-white/[0.08]
-                  bg-[#111214]
-                  px-6
-                  text-center
-                "
-              >
-                <div
-                  className="
-                    flex h-11 w-11
-                    items-center justify-center
-                    rounded-xl
-                    bg-[#2c231d]
-                    text-[#dc9458]
-                  "
-                >
-                  <Search size={18} />
-                </div>
-
-                <h3
-                  className="
-                    mt-4
-                    text-[13px]
-                    font-semibold
-                    text-zinc-300
-                  "
-                >
-                  {workspaces.length === 0
-                    ? "No workspaces yet"
-                    : "No workspaces found"}
-                </h3>
-
-                <p
-                  className="
-                    mt-1
-                    max-w-[280px]
-                    text-[10px]
-                    leading-4
-                    text-zinc-600
-                  "
-                >
-                  {workspaces.length === 0
-                    ? "Create your first workspace to start coding."
-                    : "Try changing your search or filters."}
-                </p>
-
-                {workspaces.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCreateModalOpen(true);
-                    }}
-                    className="
-                      mt-4
-                      flex h-9
-                      items-center
-                      gap-1.5
-                      rounded-lg
-                      bg-[#dc9458]
-                      px-4
-                      text-[10px]
-                      font-semibold
-                      text-[#17110d]
-                      transition-all
-                      hover:bg-[#e5a067]
-                    "
-                  >
-                    <Plus size={13} />
-
-                    New Workspace
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-
-                      setSearch("");
-                      setFilter("All");
-                    }}
-                    className="
-                      mt-4
-                      text-[10px]
-                      font-medium
-                      text-[#dc9458]
-                      transition-colors
-                      hover:text-[#e5a067]
-                    "
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </section>
             )}
           </div>
-        </div>
-      </main>
+        </aside>
 
-      <CreateWorkspaceModal
-        isOpen={createModalOpen}
-        onClose={() =>
-          setCreateModalOpen(false)
-        }
-        onCreate={handleCreateWorkspace}
-        isCreating={
-          createWorkspaceMutation.isPending
-        }
-      />
-    </>
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* Editor Header */}
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d0d0f] px-4">
+            <div className="flex items-center gap-2">
+              <FileCode2
+                size={15}
+                className="text-violet-400"
+              />
+
+              <span className="text-xs text-zinc-300">
+                {fileName}
+              </span>
+
+              {isDirty && (
+                <span className="text-xs text-zinc-600">
+                  Unsaved
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-zinc-600">
+              <span>
+                {editorLanguage}
+              </span>
+            </div>
+          </div>
+
+          {/* Monaco */}
+          <div className="min-h-0 flex-1">
+            {activeFile ? (
+              <Editor
+                height="100%"
+                width="100%"
+                language={editorLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                theme="vs-dark"
+                options={{
+                  minimap: {
+                    enabled: false,
+                  },
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  roundedSelection: false,
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  padding: {
+                    top: 12,
+                  },
+                }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-zinc-600">
+                Select a file to start coding
+              </div>
+            )}
+          </div>
+
+          <div className="flex h-52 shrink-0 flex-col border-t border-zinc-800 bg-[#0d0d0f]">
+            <div className="flex h-10 items-center gap-2 border-b border-zinc-800 px-4">
+              <Terminal
+                size={15}
+                className="text-zinc-500"
+              />
+
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Output
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {output ? (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-5 text-zinc-300">
+                  {output}
+                </pre>
+              ) : (
+                <p className="font-mono text-xs text-zinc-600">
+                  Run your code to see output here.
+                </p>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
   );
 };
 
-export default WorkspacesPage;
+export default WorkspacePage;
