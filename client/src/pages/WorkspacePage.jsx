@@ -75,7 +75,8 @@ int main() {
 };
 
 const getEditorLanguage = (workspace) => {
-  const template = workspace?.template?.toLowerCase();
+  const template =
+    workspace?.template?.toLowerCase();
 
   if (template === "javascript") {
     return "javascript";
@@ -93,7 +94,8 @@ const getEditorLanguage = (workspace) => {
     return "cpp";
   }
 
-  const language = workspace?.language?.toLowerCase();
+  const language =
+    workspace?.language?.toLowerCase();
 
   if (language?.includes("python")) {
     return "python";
@@ -114,7 +116,8 @@ const getEditorLanguage = (workspace) => {
 };
 
 const getDefaultFileName = (workspace) => {
-  const template = workspace?.template?.toLowerCase();
+  const template =
+    workspace?.template?.toLowerCase();
 
   if (template === "python") {
     return "main.py";
@@ -132,7 +135,8 @@ const getDefaultFileName = (workspace) => {
 };
 
 const getDefaultFileLanguage = (workspace) => {
-  const template = workspace?.template?.toLowerCase();
+  const template =
+    workspace?.template?.toLowerCase();
 
   if (template === "python") {
     return "python";
@@ -155,7 +159,8 @@ const getDefaultFileLanguage = (workspace) => {
 
 const getDefaultFileContent = (workspace) => {
   const template =
-    workspace?.template?.toLowerCase() || "blank";
+    workspace?.template?.toLowerCase() ||
+    "blank";
 
   return (
     DEFAULT_CODE[template] ||
@@ -171,37 +176,43 @@ const WorkspacePage = () => {
     (state) => state.accessToken
   );
 
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspace] =
+    useState(null);
+
+  const [collaborators, setCollaborators] =
+    useState([]);
+
+  const [showCollaborators, setShowCollaborators] =
+    useState(false);
 
   const [files, setFiles] = useState([]);
-  const [activeFileId, setActiveFileId] = useState(null);
 
-  const [loading, setLoading] = useState(true);
+  const [activeFileId, setActiveFileId] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
   const [filesLoading, setFilesLoading] =
     useState(true);
 
   const [error, setError] = useState("");
 
   const [code, setCode] = useState("");
+
   const [output, setOutput] = useState("");
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isDirty, setIsDirty] =
+    useState(false);
 
-  /*
-   * --------------------------------------------------
-   * REMOTE EDIT TRACKING
-   * --------------------------------------------------
-   *
-   * When another user changes the file, Monaco
-   * receives the new value through setCode().
-   *
-   * This ref allows handleEditorChange() to know
-   * that the change came from Socket.IO instead
-   * of the local user.
-   */
-  const isRemoteUpdate = useRef(false);
+  const [isSaving, setIsSaving] =
+    useState(false);
+
+  const [isRunning, setIsRunning] =
+    useState(false);
+
+  const isRemoteUpdate =
+    useRef(false);
 
   const activeFile = useMemo(() => {
     return (
@@ -228,11 +239,8 @@ const WorkspacePage = () => {
   }, [activeFile, workspace]);
 
   /*
-   * --------------------------------------------------
-   * SOCKET CONNECTION
-   * --------------------------------------------------
+   * Socket connection + workspace presence
    */
-
   useEffect(() => {
     if (!accessToken || !workspaceId) {
       return;
@@ -256,12 +264,76 @@ const WorkspacePage = () => {
         "Joined workspace:",
         data.workspaceId
       );
+
+      console.log(
+        "Workspace role:",
+        data.role
+      );
+
+      console.log(
+        "Existing collaborators:",
+        data.users
+      );
+
+      setCollaborators(
+        data.users || []
+      );
     };
 
     const handleWorkspaceError = (data) => {
       console.error(
         "Workspace socket error:",
         data.message
+      );
+    };
+
+    const handleUserJoined = (data) => {
+      if (!data?.userId) {
+        return;
+      }
+
+      console.log(
+        "User joined workspace:",
+        data.userId
+      );
+
+      setCollaborators((current) => {
+        const alreadyExists =
+          current.some(
+            (collaborator) =>
+              collaborator.userId ===
+              data.userId
+          );
+
+        if (alreadyExists) {
+          return current;
+        }
+
+        return [
+          ...current,
+          {
+            userId: data.userId,
+          },
+        ];
+      });
+    };
+
+    const handleUserLeft = (data) => {
+      if (!data?.userId) {
+        return;
+      }
+
+      console.log(
+        "User left workspace:",
+        data.userId
+      );
+
+      setCollaborators((current) =>
+        current.filter(
+          (collaborator) =>
+            collaborator.userId !==
+            data.userId
+        )
       );
     };
 
@@ -280,14 +352,27 @@ const WorkspacePage = () => {
       handleWorkspaceError
     );
 
+    socket.on(
+      "workspace:user-joined",
+      handleUserJoined
+    );
+
+    socket.on(
+      "workspace:user-left",
+      handleUserLeft
+    );
+
     if (socket.connected) {
       handleConnect();
     }
 
     return () => {
-      socket.emit("workspace:leave", {
-        workspaceId,
-      });
+      socket.emit(
+        "workspace:leave",
+        {
+          workspaceId,
+        }
+      );
 
       socket.off(
         "connect",
@@ -304,16 +389,23 @@ const WorkspacePage = () => {
         handleWorkspaceError
       );
 
+      socket.off(
+        "workspace:user-joined",
+        handleUserJoined
+      );
+
+      socket.off(
+        "workspace:user-left",
+        handleUserLeft
+      );
+
       disconnectSocket();
     };
   }, [accessToken, workspaceId]);
 
   /*
-   * --------------------------------------------------
-   * RECEIVE REMOTE FILE CHANGES
-   * --------------------------------------------------
+   * Receive remote file changes
    */
-
   useEffect(() => {
     if (!workspaceId) {
       return;
@@ -337,10 +429,6 @@ const WorkspacePage = () => {
         userId
       );
 
-      /*
-       * Update the file in local state.
-       */
-
       setFiles((currentFiles) =>
         currentFiles.map((file) =>
           file._id === fileId
@@ -351,11 +439,6 @@ const WorkspacePage = () => {
             : file
         )
       );
-
-      /*
-       * If this is the currently open file,
-       * update Monaco.
-       */
 
       if (fileId === activeFileId) {
         isRemoteUpdate.current = true;
@@ -395,11 +478,8 @@ const WorkspacePage = () => {
   }, [workspaceId, activeFileId]);
 
   /*
-   * --------------------------------------------------
-   * FETCH WORKSPACE
-   * --------------------------------------------------
+   * Fetch workspace + files
    */
-
   useEffect(() => {
     const fetchWorkspace = async () => {
       try {
@@ -423,7 +503,9 @@ const WorkspacePage = () => {
               `/api/workspaces/${workspaceId}/opened`
             );
 
-          if (openedResponse.data.workspace) {
+          if (
+            openedResponse.data.workspace
+          ) {
             setWorkspace(
               openedResponse.data.workspace
             );
@@ -448,9 +530,10 @@ const WorkspacePage = () => {
             await api.post(
               `/api/workspaces/${workspaceId}/files`,
               {
-                name: getDefaultFileName(
-                  fetchedWorkspace
-                ),
+                name:
+                  getDefaultFileName(
+                    fetchedWorkspace
+                  ),
 
                 language:
                   getDefaultFileLanguage(
@@ -472,10 +555,17 @@ const WorkspacePage = () => {
 
         setFiles(fetchedFiles);
 
-        const firstFile = fetchedFiles[0];
+        const firstFile =
+          fetchedFiles[0];
 
-        setActiveFileId(firstFile._id);
-        setCode(firstFile.content || "");
+        setActiveFileId(
+          firstFile._id
+        );
+
+        setCode(
+          firstFile.content || ""
+        );
+
         setIsDirty(false);
       } catch (error) {
         console.error(
@@ -499,11 +589,8 @@ const WorkspacePage = () => {
   }, [workspaceId]);
 
   /*
-   * --------------------------------------------------
-   * FILE SELECT
-   * --------------------------------------------------
+   * File selection
    */
-
   const handleFileSelect = (file) => {
     if (file._id === activeFileId) {
       return;
@@ -529,22 +616,10 @@ const WorkspacePage = () => {
   };
 
   /*
-   * --------------------------------------------------
-   * EDITOR CHANGE
-   * --------------------------------------------------
+   * Editor changes
    */
-
   const handleEditorChange = (value) => {
     const newContent = value ?? "";
-
-    /*
-     * Monaco can trigger onChange when the value
-     * changes programmatically.
-     *
-     * If this was caused by a remote Socket.IO
-     * update, don't treat it as a local edit and
-     * don't broadcast it again.
-     */
 
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
@@ -553,10 +628,6 @@ const WorkspacePage = () => {
 
       return;
     }
-
-    /*
-     * Local change
-     */
 
     setCode(newContent);
     setIsDirty(true);
@@ -578,11 +649,8 @@ const WorkspacePage = () => {
   };
 
   /*
-   * --------------------------------------------------
-   * MANUAL SAVE
-   * --------------------------------------------------
+   * Manual save
    */
-
   const handleSave = async () => {
     if (!activeFile || isSaving) {
       return;
@@ -591,12 +659,13 @@ const WorkspacePage = () => {
     try {
       setIsSaving(true);
 
-      const response = await api.patch(
-        `/api/workspaces/${workspaceId}/files/${activeFile._id}`,
-        {
-          content: code,
-        }
-      );
+      const response =
+        await api.patch(
+          `/api/workspaces/${workspaceId}/files/${activeFile._id}`,
+          {
+            content: code,
+          }
+        );
 
       const updatedFile =
         response.data.file;
@@ -609,7 +678,10 @@ const WorkspacePage = () => {
         )
       );
 
-      setCode(updatedFile.content || "");
+      setCode(
+        updatedFile.content || ""
+      );
+
       setIsDirty(false);
     } catch (error) {
       console.error(
@@ -627,11 +699,8 @@ const WorkspacePage = () => {
   };
 
   /*
-   * --------------------------------------------------
-   * RUN CODE
-   * --------------------------------------------------
+   * Run code
    */
-
   const handleRun = async () => {
     if (!activeFile || isRunning) {
       return;
@@ -641,21 +710,24 @@ const WorkspacePage = () => {
       setIsRunning(true);
       setOutput("Running code...\n");
 
-      const response = await api.post(
-        "/api/execution/run",
-        {
-          language: editorLanguage,
-          code,
-          stdin: "",
-        }
-      );
+      const response =
+        await api.post(
+          "/api/execution/run",
+          {
+            language: editorLanguage,
+            code,
+            stdin: "",
+          }
+        );
 
-      const result = response.data.result;
+      const result =
+        response.data.result;
 
       let executionOutput = "";
 
       if (result?.stdout) {
-        executionOutput += result.stdout;
+        executionOutput +=
+          result.stdout;
       }
 
       if (result?.stderr) {
@@ -663,7 +735,8 @@ const WorkspacePage = () => {
           executionOutput += "\n";
         }
 
-        executionOutput += result.stderr;
+        executionOutput +=
+          result.stderr;
       }
 
       if (!executionOutput) {
@@ -677,7 +750,8 @@ const WorkspacePage = () => {
         result?.exitCode !== undefined &&
         result.exitCode !== 0
       ) {
-        executionOutput += `\n\nProcess exited with code: ${result.exitCode}`;
+        executionOutput +=
+          `\n\nProcess exited with code: ${result.exitCode}`;
       }
 
       setOutput(executionOutput);
@@ -700,22 +774,13 @@ const WorkspacePage = () => {
     }
   };
 
-  /*
-   * --------------------------------------------------
-   * BACK
-   * --------------------------------------------------
-   */
-
   const handleBack = () => {
     navigate("/recent");
   };
 
   /*
-   * --------------------------------------------------
-   * LOADING STATE
-   * --------------------------------------------------
+   * Loading state
    */
-
   if (loading) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center bg-[#0d0e10] text-zinc-500">
@@ -727,11 +792,8 @@ const WorkspacePage = () => {
   }
 
   /*
-   * --------------------------------------------------
-   * ERROR STATE
-   * --------------------------------------------------
+   * Error state
    */
-
   if (error || !workspace) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center bg-[#0d0e10] px-6 text-center">
@@ -768,15 +830,10 @@ const WorkspacePage = () => {
     );
   }
 
-  /*
-   * --------------------------------------------------
-   * PAGE
-   * --------------------------------------------------
-   */
-
   return (
     <div
       className="
+        relative
         flex
         h-[calc(100dvh-5rem)]
         min-h-0
@@ -840,7 +897,8 @@ const WorkspacePage = () => {
           </h1>
 
           <p className="text-[9px] text-zinc-600">
-            {workspace.language || "JavaScript"}
+            {workspace.language ||
+              "JavaScript"}
           </p>
         </div>
 
@@ -890,17 +948,50 @@ const WorkspacePage = () => {
           <button
             type="button"
             title="Collaborators"
-            className="
+            onClick={() =>
+              setShowCollaborators(
+                (current) => !current
+              )
+            }
+            className={`
+              relative
               flex h-8 w-8
-              items-center justify-center
+              items-center
+              justify-center
               rounded-md
-              text-zinc-600
               transition
-              hover:bg-white/[0.05]
-              hover:text-zinc-300
-            "
+
+              ${
+                showCollaborators
+                  ? "bg-white/[0.06] text-zinc-200"
+                  : "text-zinc-600 hover:bg-white/[0.05] hover:text-zinc-300"
+              }
+            `}
           >
             <Users size={15} />
+
+            {collaborators.length > 0 && (
+              <span
+                className="
+                  absolute
+                  -right-0.5
+                  -top-0.5
+                  flex
+                  h-3.5
+                  min-w-3.5
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#dc9458]
+                  px-1
+                  text-[8px]
+                  font-semibold
+                  text-[#17110d]
+                "
+              >
+                {collaborators.length}
+              </span>
+            )}
           </button>
 
           {/* Save */}
@@ -931,7 +1022,9 @@ const WorkspacePage = () => {
           >
             <Save size={13} />
 
-            {isSaving ? "Saving" : "Save"}
+            {isSaving
+              ? "Saving"
+              : "Save"}
           </button>
 
           {/* Run */}
@@ -962,7 +1055,9 @@ const WorkspacePage = () => {
               fill="currentColor"
             />
 
-            {isRunning ? "Running..." : "Run"}
+            {isRunning
+              ? "Running..."
+              : "Run"}
           </button>
 
           {/* Settings */}
@@ -985,6 +1080,162 @@ const WorkspacePage = () => {
           </button>
         </div>
       </header>
+
+      {/* Collaborators panel */}
+
+      {showCollaborators && (
+        <div
+          className="
+            absolute
+            right-3
+            top-[4.5rem]
+            z-50
+            w-64
+            overflow-hidden
+            rounded-lg
+            border border-white/[0.08]
+            bg-[#111214]
+            shadow-2xl
+            shadow-black/40
+          "
+        >
+          {/* Panel header */}
+
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              border-b border-white/[0.06]
+              px-4
+              py-3
+            "
+          >
+            <div>
+              <div className="text-xs font-semibold text-zinc-200">
+                Collaborators
+              </div>
+
+              <div className="mt-0.5 text-[9px] text-zinc-600">
+                {collaborators.length}{" "}
+                {collaborators.length === 1
+                  ? "person"
+                  : "people"}{" "}
+                online
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowCollaborators(false)
+              }
+              className="
+                flex h-6 w-6
+                items-center
+                justify-center
+                rounded
+                text-zinc-600
+                hover:bg-white/[0.05]
+                hover:text-zinc-300
+              "
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Users */}
+
+          <div className="max-h-72 overflow-y-auto p-2">
+            {collaborators.length === 0 ? (
+              <div
+                className="
+                  px-3
+                  py-6
+                  text-center
+                  text-[10px]
+                  text-zinc-700
+                "
+              >
+                No other collaborators
+                online.
+              </div>
+            ) : (
+              collaborators.map(
+                (collaborator) => (
+                  <div
+                    key={collaborator.userId}
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                      rounded-md
+                      px-3
+                      py-2.5
+                      transition
+                      hover:bg-white/[0.03]
+                    "
+                  >
+                    {/* Avatar */}
+
+                    <div
+                      className="
+                        relative
+                        flex h-8 w-8
+                        shrink-0
+                        items-center
+                        justify-center
+                        rounded-full
+                        bg-[#dc9458]/10
+                        text-[10px]
+                        font-semibold
+                        text-[#dc9458]
+                      "
+                    >
+                      {(
+                        collaborator.username ||
+                        "U"
+                      )
+                        .charAt(0)
+                        .toUpperCase()}
+
+                      <span
+                        className="
+                          absolute
+                          bottom-0
+                          right-0
+                          h-2
+                          w-2
+                          rounded-full
+                          border-2
+                          border-[#111214]
+                          bg-emerald-400
+                        "
+                      />
+                    </div>
+
+                    {/* User info */}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[10px] font-medium text-zinc-300">
+                        {collaborator.username ||
+                          `User ${String(
+                            collaborator.userId
+                          ).slice(-5)}`}
+                      </div>
+
+                      <div className="mt-0.5 text-[9px] text-zinc-700">
+                        {collaborator.role ||
+                          "Collaborator"}
+                      </div>
+                    </div>
+                  </div>
+                )
+              )
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
@@ -1067,14 +1318,17 @@ const WorkspacePage = () => {
             ) : (
               files.map((file) => {
                 const isActive =
-                  file._id === activeFileId;
+                  file._id ===
+                  activeFileId;
 
                 return (
                   <button
                     key={file._id}
                     type="button"
                     onClick={() =>
-                      handleFileSelect(file)
+                      handleFileSelect(
+                        file
+                      )
                     }
                     className={`
                       flex w-full
@@ -1181,7 +1435,9 @@ const WorkspacePage = () => {
               width="100%"
               language={editorLanguage}
               value={code}
-              onChange={handleEditorChange}
+              onChange={
+                handleEditorChange
+              }
               theme="vs-dark"
               options={{
                 automaticLayout: true,
@@ -1202,13 +1458,16 @@ const WorkspacePage = () => {
                   bottom: 16,
                 },
 
-                scrollBeyondLastLine: false,
+                scrollBeyondLastLine:
+                  false,
 
                 smoothScrolling: true,
 
-                cursorSmoothCaretAnimation: "on",
+                cursorSmoothCaretAnimation:
+                  "on",
 
-                renderWhitespace: "selection",
+                renderWhitespace:
+                  "selection",
 
                 roundedSelection: false,
 
@@ -1220,7 +1479,8 @@ const WorkspacePage = () => {
 
                 insertSpaces: true,
 
-                suggestOnTriggerCharacters: true,
+                suggestOnTriggerCharacters:
+                  true,
 
                 quickSuggestions: true,
 
@@ -1244,7 +1504,8 @@ const WorkspacePage = () => {
 
                 overviewRulerBorder: false,
 
-                hideCursorInOverviewRuler: true,
+                hideCursorInOverviewRuler:
+                  true,
               }}
             />
           </div>
