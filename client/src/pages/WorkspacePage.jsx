@@ -294,7 +294,7 @@ const WorkspacePage = () => {
 
       console.log(
         "User joined workspace:",
-        data.userId
+        data
       );
 
       setCollaborators((current) => {
@@ -306,14 +306,18 @@ const WorkspacePage = () => {
           );
 
         if (alreadyExists) {
-          return current;
+          return current.map(
+            (collaborator) =>
+              collaborator.userId ===
+              data.userId
+                ? data
+                : collaborator
+          );
         }
 
         return [
           ...current,
-          {
-            userId: data.userId,
-          },
+          data,
         ];
       });
     };
@@ -400,6 +404,8 @@ const WorkspacePage = () => {
       );
 
       disconnectSocket();
+
+      setCollaborators([]);
     };
   }, [accessToken, workspaceId]);
 
