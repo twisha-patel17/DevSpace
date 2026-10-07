@@ -154,18 +154,23 @@ export const useCreateWorkspaceFile = () => {
   return useMutation({
     mutationFn: createWorkspaceFile,
 
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: workspaceKeys.files(
-          variables.workspaceId
-        ),
-      });
+    onSuccess: (file, variables) => {
+      const workspaceId = variables.workspaceId;
 
-      queryClient.invalidateQueries({
-        queryKey: workspaceKeys.detail(
-          variables.workspaceId
-        ),
-      });
+      queryClient.setQueryData(
+        workspaceKeys.files(workspaceId),
+        (oldFiles = []) => {
+          const exists = oldFiles.some(
+            (item) => item._id === file._id
+          );
+
+          if (exists) {
+            return oldFiles;
+          }
+
+          return [...oldFiles, file];
+        }
+      );
     },
   });
 };
@@ -176,12 +181,19 @@ export const useUpdateWorkspaceFile = () => {
   return useMutation({
     mutationFn: updateWorkspaceFile,
 
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: workspaceKeys.files(
-          variables.workspaceId
-        ),
-      });
+    onSuccess: (updatedFile, variables) => {
+      const workspaceId = variables.workspaceId;
+
+      queryClient.setQueryData(
+        workspaceKeys.files(workspaceId),
+        (oldFiles = []) => {
+          return oldFiles.map((file) =>
+            file._id === updatedFile._id
+              ? updatedFile
+              : file
+          );
+        }
+      );
     },
   });
 };
@@ -193,17 +205,17 @@ export const useDeleteWorkspaceFile = () => {
     mutationFn: deleteWorkspaceFile,
 
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: workspaceKeys.files(
-          variables.workspaceId
-        ),
-      });
+      const workspaceId = variables.workspaceId;
+      const deletedFileId = variables.fileId;
 
-      queryClient.invalidateQueries({
-        queryKey: workspaceKeys.detail(
-          variables.workspaceId
-        ),
-      });
+      queryClient.setQueryData(
+        workspaceKeys.files(workspaceId),
+        (oldFiles = []) => {
+          return oldFiles.filter(
+            (file) => file._id !== deletedFileId
+          );
+        }
+      );
     },
   });
 };

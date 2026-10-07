@@ -17,12 +17,32 @@ const initializeSocket = (server) => {
     },
   });
 
+  /*
+   * Pending debounced saves.
+   *
+   * key:
+   * workspaceId:fileId
+   *
+   * Each entry contains:
+   * - content
+   * - userId
+   * - revision
+   * - timer
+   */
   const pendingSaves = new Map();
+
+  /*
+   * Used to make manual saves authoritative.
+   *
+   * Whenever a manual save happens, the revision for that
+   * file is incremented. Any older debounced save becomes stale.
+   */
+  const fileRevisions = new Map();
 
   /*
    * SOCKET AUTHENTICATION
    */
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token =
         socket.handshake.auth?.token;
@@ -40,8 +60,21 @@ const initializeSocket = (server) => {
         process.env.JWT_SECRET
       );
 
+      const user =
+        await User.findById(
+          decoded.userId
+        ).select("username avatar");
+
+      if (!user) {
+        return next(
+          new Error("User not found")
+        );
+      }
+
       socket.user = {
-        userId: decoded.userId,
+        userId: user._id.toString(),
+        username: user.username,
+        avatar: user.avatar,
       };
 
       next();
@@ -60,7 +93,54 @@ const initializeSocket = (server) => {
   });
 
   /*
+   * GET CURRENT FILE REVISION
+   */
+  const getFileRevision = (saveKey) => {
+    return fileRevisions.get(saveKey) || 0;
+  };
+
+  /*
+   * INCREMENT FILE REVISION
+   */
+  const incrementFileRevision = (saveKey) => {
+    const nextRevision =
+      getFileRevision(saveKey) + 1;
+
+    fileRevisions.set(
+      saveKey,
+      nextRevision
+    );
+
+    return nextRevision;
+  };
+
+  /*
+   * CANCEL PENDING SAVE
+   */
+  const cancelPendingSave = (saveKey) => {
+    const pendingSave =
+      pendingSaves.get(saveKey);
+
+    if (!pendingSave) {
+      return;
+    }
+
+    if (pendingSave.timer) {
+      clearTimeout(
+        pendingSave.timer
+      );
+    }
+
+    pendingSaves.delete(saveKey);
+  };
+
+  /*
    * DEBOUNCED FILE SAVE
+   *
+   * Called while the user is typing.
+   *
+   * The file is persisted only after the user
+   * stops typing for 700ms.
    */
   const scheduleFileSave = ({
     workspaceId,
@@ -81,7 +161,9 @@ const initializeSocket = (server) => {
     }
 
     const revision =
-      (existingSave?.revision || 0) + 1;
+      incrementFileRevision(
+        saveKey
+      );
 
     const saveState = {
       content,
@@ -95,9 +177,18 @@ const initializeSocket = (server) => {
         const currentSave =
           pendingSaves.get(saveKey);
 
+        /*
+         * The save is no longer valid.
+         *
+         * This can happen when:
+         * - another keystroke arrived
+         * - a manual save happened
+         */
         if (
           !currentSave ||
           currentSave.revision !==
+            revision ||
+          getFileRevision(saveKey) !==
             revision
         ) {
           return;
@@ -114,7 +205,7 @@ const initializeSocket = (server) => {
           });
 
           console.log(
-            `File saved | Workspace: ${workspaceId} | File: ${fileId} | User: ${currentSave.userId} | Revision: ${revision}`
+            `File autosaved | Workspace: ${workspaceId} | File: ${fileId} | User: ${currentSave.userId} | Revision: ${revision}`
           );
 
           const latestSave =
@@ -131,7 +222,7 @@ const initializeSocket = (server) => {
           }
         } catch (error) {
           console.error(
-            "File persistence error:",
+            "File autosave error:",
             error
           );
 
@@ -161,49 +252,33 @@ const initializeSocket = (server) => {
   /*
    * GET COLLABORATOR INFORMATION
    */
-  const getCollaboratorInfo = async ({
+  const getCollaboratorInfo = ({
     workspace,
-    userId,
+    socketUser,
   }) => {
-    const user =
-      await User.findById(userId).select(
-        "username avatar"
-      );
+    const userId =
+      socketUser.userId.toString();
 
-    if (!user) {
-      return null;
-    }
-
-    /*
-     * Workspace owner
-     */
     const isOwner =
       workspace.owner.toString() ===
-      userId.toString();
+      userId;
 
     if (isOwner) {
       return {
-        userId:
-          user._id.toString(),
-
+        userId,
         username:
-          user.username,
-
+          socketUser.username,
         avatar:
-          user.avatar,
-
+          socketUser.avatar,
         role: "owner",
       };
     }
 
-    /*
-     * Workspace member
-     */
     const member =
       workspace.members.find(
         (member) =>
           member.user?.toString() ===
-          userId.toString()
+          userId
       );
 
     if (!member) {
@@ -211,15 +286,11 @@ const initializeSocket = (server) => {
     }
 
     return {
-      userId:
-        user._id.toString(),
-
+      userId,
       username:
-        user.username,
-
+        socketUser.username,
       avatar:
-        user.avatar,
-
+        socketUser.avatar,
       role:
         member.role,
     };
@@ -252,9 +323,46 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Verify workspace access
-           */
+          const requestedWorkspaceId =
+            workspaceId.toString();
+
+          if (
+            socket.workspaceAccess
+              ?.workspaceId ===
+            requestedWorkspaceId
+          ) {
+            return;
+          }
+
+          if (
+            socket.workspaceAccess
+              ?.workspaceId
+          ) {
+            const previousWorkspaceId =
+              socket.workspaceAccess
+                .workspaceId;
+
+            const previousRoom =
+              `workspace:${previousWorkspaceId}`;
+
+            socket
+              .to(previousRoom)
+              .emit(
+                "workspace:user-left",
+                {
+                  userId:
+                    socket.user.userId,
+                }
+              );
+
+            socket.leave(
+              previousRoom
+            );
+
+            socket.workspaceAccess =
+              null;
+          }
+
           const workspace =
             await Workspace.findOne({
               _id: workspaceId,
@@ -286,9 +394,6 @@ const initializeSocket = (server) => {
           const roomName =
             `workspace:${workspaceId}`;
 
-          /*
-           * Find existing collaborators
-           */
           const existingUsers = [];
 
           const room =
@@ -310,11 +415,10 @@ const initializeSocket = (server) => {
                   ?.userId
               ) {
                 const collaborator =
-                  await getCollaboratorInfo({
+                  getCollaboratorInfo({
                     workspace,
-                    userId:
-                      existingSocket
-                        .user.userId,
+                    socketUser:
+                      existingSocket.user,
                   });
 
                 if (collaborator) {
@@ -332,14 +436,8 @@ const initializeSocket = (server) => {
             }
           }
 
-          /*
-           * Join room
-           */
           socket.join(roomName);
 
-          /*
-           * Determine current user's role
-           */
           const isOwner =
             workspace.owner.toString() ===
             socket.user.userId.toString();
@@ -355,10 +453,6 @@ const initializeSocket = (server) => {
             ? "owner"
             : member?.role;
 
-          /*
-           * Store workspace access
-           * and active file
-           */
           socket.workspaceAccess = {
             workspaceId:
               workspaceId.toString(),
@@ -368,10 +462,6 @@ const initializeSocket = (server) => {
             activeFileId: null,
           };
 
-          /*
-           * Tell current user about
-           * existing collaborators
-           */
           socket.emit(
             "workspace:joined",
             {
@@ -381,20 +471,13 @@ const initializeSocket = (server) => {
             }
           );
 
-          /*
-           * Get current user profile
-           */
           const currentUser =
-            await getCollaboratorInfo({
+            getCollaboratorInfo({
               workspace,
-
-              userId:
-                socket.user.userId,
+              socketUser:
+                socket.user,
             });
 
-          /*
-           * Notify other collaborators
-           */
           if (currentUser) {
             socket
               .to(roomName)
@@ -403,8 +486,7 @@ const initializeSocket = (server) => {
                 {
                   ...currentUser,
 
-                  activeFileId:
-                    null,
+                  activeFileId: null,
                 }
               );
           }
@@ -439,12 +521,20 @@ const initializeSocket = (server) => {
           return;
         }
 
-        const roomName =
-          `workspace:${workspaceId}`;
+        const requestedWorkspaceId =
+          workspaceId.toString();
 
-        /*
-         * Notify remaining users
-         */
+        if (
+          socket.workspaceAccess
+            ?.workspaceId !==
+          requestedWorkspaceId
+        ) {
+          return;
+        }
+
+        const roomName =
+          `workspace:${requestedWorkspaceId}`;
+
         socket
           .to(roomName)
           .emit(
@@ -455,21 +545,10 @@ const initializeSocket = (server) => {
             }
           );
 
-        /*
-         * Leave room
-         */
         socket.leave(roomName);
 
-        /*
-         * Clear cached workspace data
-         */
-        if (
-          socket.workspaceAccess
-            ?.workspaceId ===
-          workspaceId.toString()
-        ) {
-          socket.workspaceAccess = null;
-        }
+        socket.workspaceAccess =
+          null;
 
         console.log(
           `User ${socket.user.userId} left workspace ${workspaceId}`
@@ -478,10 +557,7 @@ const initializeSocket = (server) => {
     );
 
     /*
-     * ACTIVE FILE
-     *
-     * Called when the user opens/selects
-     * a file in the editor.
+     * FILE OPEN
      */
     socket.on(
       "file:open",
@@ -497,9 +573,6 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Verify workspace membership
-           */
           const workspaceAccess =
             socket.workspaceAccess;
 
@@ -511,10 +584,6 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Verify file belongs
-           * to this workspace.
-           */
           const file =
             await File.findOne({
               _id: fileId,
@@ -529,18 +598,12 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Store active file
-           */
           socket.workspaceAccess.activeFileId =
             fileId.toString();
 
           const roomName =
             `workspace:${workspaceId}`;
 
-          /*
-           * Notify other collaborators
-           */
           socket
             .to(roomName)
             .emit(
@@ -567,7 +630,12 @@ const initializeSocket = (server) => {
     );
 
     /*
-     * FILE CHANGE
+     * FILE CONTENT CHANGE
+     *
+     * Used while typing.
+     *
+     * 1. Broadcast immediately.
+     * 2. Schedule debounced persistence.
      */
     socket.on(
       "file:change",
@@ -577,9 +645,6 @@ const initializeSocket = (server) => {
         content,
       }) => {
         try {
-          /*
-           * Validate data
-           */
           if (
             !workspaceId ||
             !fileId ||
@@ -596,10 +661,6 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Verify socket joined
-           * this workspace
-           */
           const workspaceAccess =
             socket.workspaceAccess;
 
@@ -619,16 +680,9 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Get cached role
-           */
           const role =
             workspaceAccess.role;
 
-          /*
-           * Only owner/editor
-           * can modify files
-           */
           if (
             role !== "owner" &&
             role !== "editor"
@@ -644,10 +698,6 @@ const initializeSocket = (server) => {
             return;
           }
 
-          /*
-           * Verify file belongs
-           * to workspace
-           */
           const file =
             await File.findOne({
               _id: fileId,
@@ -673,9 +723,6 @@ const initializeSocket = (server) => {
           const roomName =
             `workspace:${workspaceId}`;
 
-          /*
-           * Broadcast immediately
-           */
           socket
             .to(roomName)
             .emit(
@@ -692,9 +739,6 @@ const initializeSocket = (server) => {
               }
             );
 
-          /*
-           * Persist after debounce
-           */
           scheduleFileSave({
             workspaceId,
 
@@ -721,6 +765,423 @@ const initializeSocket = (server) => {
               message:
                 "Failed to process file change",
             }
+          );
+        }
+      }
+    );
+
+    /*
+     * MANUAL FILE SAVE
+     *
+     * This is now the authoritative save path.
+     *
+     * The client will send the complete current
+     * editor content here when Save is clicked.
+     *
+     * Any pending autosave for this file is
+     * cancelled first.
+     */
+    socket.on(
+      "file:save",
+      async ({
+        workspaceId,
+        fileId,
+        content,
+      }) => {
+        try {
+          if (
+            !workspaceId ||
+            !fileId ||
+            typeof content !== "string"
+          ) {
+            socket.emit(
+              "file:error",
+              {
+                message:
+                  "Invalid file save data",
+              }
+            );
+
+            return;
+          }
+
+          const workspaceAccess =
+            socket.workspaceAccess;
+
+          if (
+            !workspaceAccess ||
+            workspaceAccess.workspaceId !==
+              workspaceId.toString()
+          ) {
+            socket.emit(
+              "file:error",
+              {
+                message:
+                  "You have not joined this workspace",
+              }
+            );
+
+            return;
+          }
+
+          const role =
+            workspaceAccess.role;
+
+          if (
+            role !== "owner" &&
+            role !== "editor"
+          ) {
+            socket.emit(
+              "file:error",
+              {
+                message:
+                  "You do not have permission to save this file",
+              }
+            );
+
+            return;
+          }
+
+          const file =
+            await File.findOne({
+              _id: fileId,
+
+              workspace:
+                workspaceId,
+
+              type: "file",
+            });
+
+          if (!file) {
+            socket.emit(
+              "file:error",
+              {
+                message:
+                  "File not found in this workspace",
+              }
+            );
+
+            return;
+          }
+
+          const saveKey =
+            `${workspaceId}:${fileId}`;
+
+          /*
+           * Cancel any pending autosave.
+           */
+          cancelPendingSave(saveKey);
+
+          /*
+           * Advance revision so an already-running
+           * stale autosave cannot be considered valid.
+           */
+          const manualRevision =
+            incrementFileRevision(
+              saveKey
+            );
+
+          /*
+           * Persist immediately.
+           */
+          await updateFileContent({
+            workspaceId,
+
+            fileId,
+
+            content,
+
+            userId:
+              socket.user.userId,
+          });
+
+          console.log(
+            `File manually saved | Workspace: ${workspaceId} | File: ${fileId} | User: ${socket.user.userId} | Revision: ${manualRevision}`
+          );
+
+          /*
+           * Notify all other collaborators.
+           */
+          const roomName =
+            `workspace:${workspaceId}`;
+
+          socket
+            .to(roomName)
+            .emit(
+              "file:changed",
+              {
+                workspaceId,
+
+                fileId,
+
+                content,
+
+                userId:
+                  socket.user.userId,
+
+                saved: true,
+              }
+            );
+
+          /*
+           * Confirm save to the client that
+           * performed the manual save.
+           */
+          socket.emit(
+            "file:saved",
+            {
+              workspaceId,
+
+              fileId,
+
+              content,
+
+              revision:
+                manualRevision,
+            }
+          );
+        } catch (error) {
+          console.error(
+            "Manual file save error:",
+            error
+          );
+
+          socket.emit(
+            "file:error",
+            {
+              message:
+                "Failed to save file",
+            }
+          );
+        }
+      }
+    );
+
+    /*
+     * FILE CREATED
+     *
+     * This event is emitted by the REST layer
+     * after a file/folder has been successfully
+     * created.
+     */
+    socket.on(
+      "file:created",
+      async ({
+        workspaceId,
+        fileId,
+      }) => {
+        try {
+          if (
+            !workspaceId ||
+            !fileId
+          ) {
+            return;
+          }
+
+          const workspaceAccess =
+            socket.workspaceAccess;
+
+          if (
+            !workspaceAccess ||
+            workspaceAccess.workspaceId !==
+              workspaceId.toString()
+          ) {
+            return;
+          }
+
+          if (
+            workspaceAccess.role !==
+              "owner" &&
+            workspaceAccess.role !==
+              "editor"
+          ) {
+            return;
+          }
+
+          const file =
+            await File.findOne({
+              _id: fileId,
+              workspace: workspaceId,
+            }).lean();
+
+          if (!file) {
+            return;
+          }
+
+          const roomName =
+            `workspace:${workspaceId}`;
+
+          socket
+            .to(roomName)
+            .emit(
+              "workspace:file-created",
+              {
+                workspaceId:
+                  workspaceId.toString(),
+
+                file,
+
+                userId:
+                  socket.user.userId,
+              }
+            );
+        } catch (error) {
+          console.error(
+            "File created event error:",
+            error
+          );
+        }
+      }
+    );
+
+    /*
+     * FILE UPDATED
+     *
+     * Used for rename/move/language changes
+     * performed through REST.
+     */
+    socket.on(
+      "file:updated",
+      async ({
+        workspaceId,
+        fileId,
+      }) => {
+        try {
+          if (
+            !workspaceId ||
+            !fileId
+          ) {
+            return;
+          }
+
+          const workspaceAccess =
+            socket.workspaceAccess;
+
+          if (
+            !workspaceAccess ||
+            workspaceAccess.workspaceId !==
+              workspaceId.toString()
+          ) {
+            return;
+          }
+
+          if (
+            workspaceAccess.role !==
+              "owner" &&
+            workspaceAccess.role !==
+              "editor"
+          ) {
+            return;
+          }
+
+          const file =
+            await File.findOne({
+              _id: fileId,
+              workspace: workspaceId,
+            }).lean();
+
+          if (!file) {
+            return;
+          }
+
+          const roomName =
+            `workspace:${workspaceId}`;
+
+          socket
+            .to(roomName)
+            .emit(
+              "workspace:file-updated",
+              {
+                workspaceId:
+                  workspaceId.toString(),
+
+                file,
+
+                userId:
+                  socket.user.userId,
+              }
+            );
+        } catch (error) {
+          console.error(
+            "File updated event error:",
+            error
+          );
+        }
+      }
+    );
+
+    /*
+     * FILE DELETED
+     */
+    socket.on(
+      "file:deleted",
+      async ({
+        workspaceId,
+        fileId,
+      }) => {
+        try {
+          if (
+            !workspaceId ||
+            !fileId
+          ) {
+            return;
+          }
+
+          const workspaceAccess =
+            socket.workspaceAccess;
+
+          if (
+            !workspaceAccess ||
+            workspaceAccess.workspaceId !==
+              workspaceId.toString()
+          ) {
+            return;
+          }
+
+          if (
+            workspaceAccess.role !==
+              "owner" &&
+            workspaceAccess.role !==
+              "editor"
+          ) {
+            return;
+          }
+
+          /*
+           * Remove any pending save associated
+           * with the deleted file.
+           */
+          const saveKey =
+            `${workspaceId}:${fileId}`;
+
+          cancelPendingSave(saveKey);
+
+          fileRevisions.delete(
+            saveKey
+          );
+
+          const roomName =
+            `workspace:${workspaceId}`;
+
+          socket
+            .to(roomName)
+            .emit(
+              "workspace:file-deleted",
+              {
+                workspaceId:
+                  workspaceId.toString(),
+
+                fileId:
+                  fileId.toString(),
+
+                userId:
+                  socket.user.userId,
+              }
+            );
+        } catch (error) {
+          console.error(
+            "File deleted event error:",
+            error
           );
         }
       }

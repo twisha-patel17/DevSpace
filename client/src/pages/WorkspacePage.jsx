@@ -15,14 +15,22 @@ import {
   Terminal,
   Folder,
   FileCode2,
-  ChevronDown,
-  MoreHorizontal,
+  Plus,
 } from "lucide-react";
 
 import Editor from "@monaco-editor/react";
 
 import api from "../api/axios";
 import useAuthStore from "../store/authStore";
+
+import {
+  createWorkspaceFile,
+  updateWorkspaceFile,
+  deleteWorkspaceFile,
+  getWorkspaceFiles,
+} from "../api/workspace.api";
+
+import FileTree from "../components/workspace/FileTree";
 
 import socket, {
   connectSocket,
@@ -168,6 +176,60 @@ const getDefaultFileContent = (workspace) => {
   );
 };
 
+const getLanguageFromFileName = (fileName) => {
+  const extension =
+    fileName
+      .split(".")
+      .pop()
+      ?.toLowerCase();
+
+  switch (extension) {
+    case "js":
+    case "mjs":
+    case "cjs":
+      return "javascript";
+
+    case "jsx":
+      return "javascript";
+
+    case "ts":
+    case "tsx":
+      return "typescript";
+
+    case "py":
+      return "python";
+
+    case "cpp":
+    case "cc":
+    case "cxx":
+      return "cpp";
+
+    case "c":
+      return "c";
+
+    case "java":
+      return "java";
+
+    case "json":
+      return "json";
+
+    case "html":
+      return "html";
+
+    case "css":
+      return "css";
+
+    case "md":
+      return "markdown";
+
+    case "sql":
+      return "sql";
+
+    default:
+      return "plaintext";
+  }
+};
+
 const WorkspacePage = () => {
   const { workspaceId } = useParams();
   const navigate = useNavigate();
@@ -196,11 +258,14 @@ const WorkspacePage = () => {
   const [filesLoading, setFilesLoading] =
     useState(true);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [code, setCode] = useState("");
+  const [code, setCode] =
+    useState("");
 
-  const [output, setOutput] = useState("");
+  const [output, setOutput] =
+    useState("");
 
   const [isDirty, setIsDirty] =
     useState(false);
@@ -217,7 +282,8 @@ const WorkspacePage = () => {
   const activeFile = useMemo(() => {
     return (
       files.find(
-        (file) => file._id === activeFileId
+        (file) =>
+          file._id === activeFileId
       ) || null
     );
   }, [files, activeFileId]);
@@ -254,9 +320,12 @@ const WorkspacePage = () => {
         socket.id
       );
 
-      socket.emit("workspace:join", {
-        workspaceId,
-      });
+      socket.emit(
+        "workspace:join",
+        {
+          workspaceId,
+        }
+      );
     };
 
     const handleWorkspaceJoined = (data) => {
@@ -283,7 +352,7 @@ const WorkspacePage = () => {
     const handleWorkspaceError = (data) => {
       console.error(
         "Workspace socket error:",
-        data.message
+        data?.message
       );
     };
 
@@ -341,6 +410,32 @@ const WorkspacePage = () => {
       );
     };
 
+    const handleUserFileChanged = (data) => {
+      if (!data?.userId) {
+        return;
+      }
+
+      console.log(
+        "Collaborator changed file:",
+        data
+      );
+
+      setCollaborators((current) =>
+        current.map(
+          (collaborator) =>
+            collaborator.userId ===
+            data.userId
+              ? {
+                  ...collaborator,
+                  activeFileId:
+                    data.fileId ||
+                    null,
+                }
+              : collaborator
+        )
+      );
+    };
+
     socket.on(
       "connect",
       handleConnect
@@ -364,6 +459,11 @@ const WorkspacePage = () => {
     socket.on(
       "workspace:user-left",
       handleUserLeft
+    );
+
+    socket.on(
+      "workspace:user-file-changed",
+      handleUserFileChanged
     );
 
     if (socket.connected) {
@@ -401,6 +501,11 @@ const WorkspacePage = () => {
       socket.off(
         "workspace:user-left",
         handleUserLeft
+      );
+
+      socket.off(
+        "workspace:user-file-changed",
+        handleUserFileChanged
       );
 
       disconnectSocket();
@@ -450,19 +555,251 @@ const WorkspacePage = () => {
         isRemoteUpdate.current = true;
 
         setCode(content);
+        setIsDirty(false);
       }
     };
 
-    const handleFileError = (data) => {
+    const handleFileCreated = (data) => {
+      if (
+        !data?.file ||
+        data.workspaceId?.toString() !==
+          workspaceId.toString()
+      ) {
+        return;
+      }
+
+      console.log(
+        "Remote file created:",
+        data.file
+      );
+
+      setFiles((currentFiles) => {
+        const exists =
+          currentFiles.some(
+            (file) =>
+              file._id ===
+              data.file._id
+          );
+
+        if (exists) {
+          return currentFiles;
+        }
+
+        return [
+          ...currentFiles,
+          data.file,
+        ];
+      });
+    };
+
+    const handleFileUpdated = async (
+      data
+    ) => {
+      if (
+        !data?.file ||
+        data.workspaceId?.toString() !==
+          workspaceId.toString()
+      ) {
+        return;
+      }
+
+      console.log(
+        "Remote file updated:",
+        data.file
+      );
+
+      /*
+       * Folder rename changes the paths of
+       * all children in the database.
+       *
+       * The socket event contains only the
+       * renamed folder, so refresh the full
+       * tree to keep every child path correct.
+       */
+      if (
+        data.file.type ===
+        "folder"
+      ) {
+        try {
+          const latestFiles =
+            await getWorkspaceFiles(
+              workspaceId
+            );
+
+          setFiles(latestFiles);
+
+          if (
+            activeFileId ===
+            data.file._id
+          ) {
+            const latestFolder =
+              latestFiles.find(
+                (file) =>
+                  file._id ===
+                  data.file._id
+              );
+
+            if (!latestFolder) {
+              setActiveFileId(null);
+              setCode("");
+              setIsDirty(false);
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Failed to refresh files after folder update:",
+            error
+          );
+        }
+
+        return;
+      }
+
+      setFiles((currentFiles) =>
+        currentFiles.map((file) =>
+          file._id ===
+          data.file._id
+            ? data.file
+            : file
+        )
+      );
+
+      if (
+        activeFileId ===
+        data.file._id &&
+        typeof data.file.content ===
+          "string"
+      ) {
+        isRemoteUpdate.current =
+          true;
+
+        setCode(
+          data.file.content
+        );
+
+        setIsDirty(false);
+      }
+    };
+
+    const handleFileDeleted = (
+      data
+    ) => {
+      if (
+        !data?.fileId ||
+        data.workspaceId?.toString() !==
+          workspaceId.toString()
+      ) {
+        return;
+      }
+
+      console.log(
+        "Remote file deleted:",
+        data.fileId
+      );
+
+      setFiles((currentFiles) => {
+        const deletedFile =
+          currentFiles.find(
+            (file) =>
+              file._id ===
+              data.fileId
+          );
+
+        if (!deletedFile) {
+          return currentFiles;
+        }
+
+        const deletedPath =
+          deletedFile.path;
+
+        return currentFiles.filter(
+          (file) => {
+            if (
+              file._id ===
+              data.fileId
+            ) {
+              return false;
+            }
+
+            if (
+              deletedFile.type ===
+              "folder"
+            ) {
+              return !file.path.startsWith(
+                `${deletedPath}/`
+              );
+            }
+
+            return true;
+          }
+        );
+      });
+
+      if (
+        activeFileId ===
+        data.fileId
+      ) {
+        setFiles((currentFiles) => {
+          const nextFile =
+            currentFiles.find(
+              (file) =>
+                file.type === "file" &&
+                file._id !==
+                  data.fileId
+            );
+
+          setActiveFileId(
+            nextFile?._id ||
+              null
+          );
+
+          setCode(
+            nextFile?.content ||
+              ""
+          );
+
+          setIsDirty(false);
+          setOutput("");
+
+          return currentFiles;
+        });
+      }
+    };
+
+    const handleFileError = (
+      data
+    ) => {
       console.error(
         "File socket error:",
-        data.message
+        data?.message
+      );
+
+      setIsSaving(false);
+
+      setOutput(
+        data?.message ||
+          "File operation failed."
       );
     };
 
     socket.on(
       "file:changed",
       handleFileChanged
+    );
+
+    socket.on(
+      "workspace:file-created",
+      handleFileCreated
+    );
+
+    socket.on(
+      "workspace:file-updated",
+      handleFileUpdated
+    );
+
+    socket.on(
+      "workspace:file-deleted",
+      handleFileDeleted
     );
 
     socket.on(
@@ -477,11 +814,29 @@ const WorkspacePage = () => {
       );
 
       socket.off(
+        "workspace:file-created",
+        handleFileCreated
+      );
+
+      socket.off(
+        "workspace:file-updated",
+        handleFileUpdated
+      );
+
+      socket.off(
+        "workspace:file-deleted",
+        handleFileDeleted
+      );
+
+      socket.off(
         "file:error",
         handleFileError
       );
     };
-  }, [workspaceId, activeFileId]);
+  }, [
+    workspaceId,
+    activeFileId,
+  ]);
 
   /*
    * Fetch workspace + files
@@ -501,7 +856,9 @@ const WorkspacePage = () => {
         const fetchedWorkspace =
           workspaceResponse.data.workspace;
 
-        setWorkspace(fetchedWorkspace);
+        setWorkspace(
+          fetchedWorkspace
+        );
 
         try {
           const openedResponse =
@@ -510,67 +867,131 @@ const WorkspacePage = () => {
             );
 
           if (
-            openedResponse.data.workspace
+            openedResponse.data
+              .workspace
           ) {
             setWorkspace(
-              openedResponse.data.workspace
+              openedResponse.data
+                .workspace
             );
           }
-        } catch (openedError) {
+        } catch (
+          openedError
+        ) {
           console.error(
             "Failed to mark workspace as opened:",
             openedError
           );
         }
 
-        const filesResponse =
-          await api.get(
-            `/api/workspaces/${workspaceId}/files`
+        let fetchedFiles =
+          await getWorkspaceFiles(
+            workspaceId
           );
 
-        let fetchedFiles =
-          filesResponse.data.files || [];
+        if (
+          fetchedFiles.length === 0
+        ) {
+          try {
+            const defaultFileResponse =
+              await api.post(
+                `/api/workspaces/${workspaceId}/files`,
+                {
+                  name:
+                    getDefaultFileName(
+                      fetchedWorkspace
+                    ),
 
-        if (fetchedFiles.length === 0) {
-          const defaultFileResponse =
-            await api.post(
-              `/api/workspaces/${workspaceId}/files`,
-              {
-                name:
-                  getDefaultFileName(
-                    fetchedWorkspace
-                  ),
+                  language:
+                    getDefaultFileLanguage(
+                      fetchedWorkspace
+                    ),
 
-                language:
-                  getDefaultFileLanguage(
-                    fetchedWorkspace
-                  ),
+                  content:
+                    getDefaultFileContent(
+                      fetchedWorkspace
+                    ),
 
-                content:
-                  getDefaultFileContent(
-                    fetchedWorkspace
-                  ),
-              }
+                  type: "file",
+
+                  parent: null,
+                }
+              );
+
+            const createdFile =
+              defaultFileResponse
+                .data.file;
+
+            fetchedFiles = [
+              createdFile,
+            ];
+
+            /*
+             * Notify collaborators if
+             * the default file was created.
+             */
+            if (socket.connected) {
+              socket.emit(
+                "file:created",
+                {
+                  workspaceId,
+                  fileId:
+                    createdFile._id,
+                }
+              );
+            }
+          } catch (
+            createError
+          ) {
+            /*
+             * Another collaborator may have
+             * created the default file at the
+             * same time.
+             *
+             * Refresh once before failing.
+             */
+            console.error(
+              "Default file creation failed:",
+              createError
             );
 
-          const createdFile =
-            defaultFileResponse.data.file;
-
-          fetchedFiles = [createdFile];
+            fetchedFiles =
+              await getWorkspaceFiles(
+                workspaceId
+              );
+          }
         }
 
-        setFiles(fetchedFiles);
+        setFiles(
+          fetchedFiles
+        );
 
         const firstFile =
-          fetchedFiles[0];
+          fetchedFiles.find(
+            (file) =>
+              file.type === "file"
+          );
 
-        setActiveFileId(
-          firstFile._id
-        );
+        if (firstFile) {
+          setActiveFileId(
+            firstFile._id
+          );
 
-        setCode(
-          firstFile.content || ""
-        );
+          setCode(
+            firstFile.content || ""
+          );
+
+          if (socket.connected) {
+            socket.emit(
+              "file:open",
+              {
+                workspaceId,
+                fileId:
+                  firstFile._id,
+              }
+            );
+          }
+        }
 
         setIsDirty(false);
       } catch (error) {
@@ -580,7 +1001,8 @@ const WorkspacePage = () => {
         );
 
         setError(
-          error.response?.data?.message ||
+          error.response?.data
+            ?.message ||
             "Failed to load workspace"
         );
       } finally {
@@ -597,8 +1019,19 @@ const WorkspacePage = () => {
   /*
    * File selection
    */
-  const handleFileSelect = (file) => {
-    if (file._id === activeFileId) {
+  const handleFileSelect = (
+    file
+  ) => {
+    if (
+      !file ||
+      file.type === "folder"
+    ) {
+      return;
+    }
+
+    if (
+      file._id === activeFileId
+    ) {
       return;
     }
 
@@ -613,22 +1046,498 @@ const WorkspacePage = () => {
       }
     }
 
-    isRemoteUpdate.current = false;
+    isRemoteUpdate.current =
+      false;
 
-    setActiveFileId(file._id);
-    setCode(file.content || "");
+    setActiveFileId(
+      file._id
+    );
+
+    setCode(
+      file.content || ""
+    );
+
     setIsDirty(false);
     setOutput("");
+
+    if (socket.connected) {
+      socket.emit(
+        "file:open",
+        {
+          workspaceId,
+          fileId: file._id,
+        }
+      );
+    }
+  };
+
+  /*
+   * Build file path
+   */
+  const getFilePath = (
+    name,
+    parentId
+  ) => {
+    if (!parentId) {
+      return name;
+    }
+
+    const parent =
+      files.find(
+        (file) =>
+          file._id ===
+          parentId
+      );
+
+    if (!parent) {
+      return name;
+    }
+
+    return `${parent.path}/${name}`;
+  };
+
+  /*
+   * Create file
+   */
+  const handleCreateFile = async (
+    parent = null
+  ) => {
+    const name =
+      window.prompt(
+        "File name"
+      );
+
+    if (
+      !name ||
+      !name.trim()
+    ) {
+      return;
+    }
+
+    const trimmedName =
+      name.trim();
+
+    try {
+      const newFile =
+        await createWorkspaceFile({
+          workspaceId,
+
+          fileData: {
+            name: trimmedName,
+
+            path: getFilePath(
+              trimmedName,
+              parent?._id ||
+                null
+            ),
+
+            type: "file",
+
+            language:
+              getLanguageFromFileName(
+                trimmedName
+              ),
+
+            content: "",
+
+            parent:
+              parent?._id ||
+              null,
+          },
+        });
+
+      setFiles((current) => {
+        const exists =
+          current.some(
+            (file) =>
+              file._id ===
+              newFile._id
+          );
+
+        if (exists) {
+          return current;
+        }
+
+        return [
+          ...current,
+          newFile,
+        ];
+      });
+
+      setActiveFileId(
+        newFile._id
+      );
+
+      setCode(
+        newFile.content || ""
+      );
+
+      setOutput("");
+      setIsDirty(false);
+
+      if (socket.connected) {
+        socket.emit(
+          "file:created",
+          {
+            workspaceId,
+            fileId:
+              newFile._id,
+          }
+        );
+
+        socket.emit(
+          "file:open",
+          {
+            workspaceId,
+            fileId:
+              newFile._id,
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Failed to create file:",
+        error
+      );
+
+      window.alert(
+        error.response?.data
+          ?.message ||
+          "Failed to create file"
+      );
+    }
+  };
+
+  /*
+   * Create folder
+   */
+  const handleCreateFolder =
+    async (
+      parent = null
+    ) => {
+      const name =
+        window.prompt(
+          "Folder name"
+        );
+
+      if (
+        !name ||
+        !name.trim()
+      ) {
+        return;
+      }
+
+      const trimmedName =
+        name.trim();
+
+      try {
+        const newFolder =
+          await createWorkspaceFile({
+            workspaceId,
+
+            fileData: {
+              name: trimmedName,
+
+              path: getFilePath(
+                trimmedName,
+                parent?._id ||
+                  null
+              ),
+
+              type: "folder",
+
+              language: null,
+
+              content: "",
+
+              parent:
+                parent?._id ||
+                null,
+            },
+          });
+
+        setFiles((current) => {
+          const exists =
+            current.some(
+              (file) =>
+                file._id ===
+                newFolder._id
+            );
+
+          if (exists) {
+            return current;
+          }
+
+          return [
+            ...current,
+            newFolder,
+          ];
+        });
+
+        if (socket.connected) {
+          socket.emit(
+            "file:created",
+            {
+              workspaceId,
+              fileId:
+                newFolder._id,
+            }
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to create folder:",
+          error
+        );
+
+        window.alert(
+          error.response?.data
+            ?.message ||
+            "Failed to create folder"
+        );
+      }
+    };
+
+  /*
+   * Rename file / folder
+   */
+  const handleRename = async (
+    file
+  ) => {
+    const name =
+      window.prompt(
+        "New name",
+        file.name
+      );
+
+    if (
+      !name ||
+      !name.trim()
+    ) {
+      return;
+    }
+
+    const trimmedName =
+      name.trim();
+
+    if (
+      trimmedName ===
+      file.name
+    ) {
+      return;
+    }
+
+    try {
+      const updatedFile =
+        await updateWorkspaceFile({
+          workspaceId,
+          fileId: file._id,
+
+          fileData: {
+            name: trimmedName,
+          },
+        });
+
+      setFiles((current) =>
+        current.map((item) => {
+          if (
+            item._id ===
+            updatedFile._id
+          ) {
+            return updatedFile;
+          }
+
+          if (
+            file.type === "folder" &&
+            item.path.startsWith(
+              `${file.path}/`
+            )
+          ) {
+            return {
+              ...item,
+
+              path:
+                updatedFile.path +
+                item.path.substring(
+                  file.path.length
+                ),
+            };
+          }
+
+          return item;
+        })
+      );
+
+      if (socket.connected) {
+        socket.emit(
+          "file:updated",
+          {
+            workspaceId,
+            fileId:
+              file._id,
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Failed to rename:",
+        error
+      );
+
+      window.alert(
+        error.response?.data
+          ?.message ||
+          "Failed to rename"
+      );
+    }
+  };
+
+  /*
+   * Delete file / folder
+   */
+  const handleDelete = async (
+    file
+  ) => {
+    const message =
+      file.type === "folder"
+        ? `Delete folder "${file.name}" and everything inside it?`
+        : `Delete "${file.name}"?`;
+
+    const confirmed =
+      window.confirm(message);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteWorkspaceFile({
+        workspaceId,
+        fileId: file._id,
+      });
+
+      const deletedPath =
+        file.path;
+
+      const activeFileWasDeleted =
+        activeFileId ===
+          file._id ||
+        (
+          file.type ===
+            "folder" &&
+          activeFileId &&
+          files
+            .find(
+              (item) =>
+                item._id ===
+                activeFileId
+            )
+            ?.path.startsWith(
+              `${deletedPath}/`
+            )
+        );
+
+      const remainingFiles =
+        files.filter(
+          (item) => {
+            if (
+              item._id ===
+              file._id
+            ) {
+              return false;
+            }
+
+            if (
+              file.type ===
+              "folder"
+            ) {
+              return !item.path.startsWith(
+                `${deletedPath}/`
+              );
+            }
+
+            return true;
+          }
+        );
+
+      setFiles(
+        remainingFiles
+      );
+
+      if (activeFileWasDeleted) {
+        const nextFile =
+          remainingFiles.find(
+            (item) =>
+              item.type ===
+              "file"
+          );
+
+        setActiveFileId(
+          nextFile?._id ||
+            null
+        );
+
+        setCode(
+          nextFile?.content ||
+            ""
+        );
+
+        setIsDirty(false);
+        setOutput("");
+
+        if (
+          nextFile &&
+          socket.connected
+        ) {
+          socket.emit(
+            "file:open",
+            {
+              workspaceId,
+              fileId:
+                nextFile._id,
+            }
+          );
+        }
+      }
+
+      if (socket.connected) {
+        socket.emit(
+          "file:deleted",
+          {
+            workspaceId,
+            fileId:
+              file._id,
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Failed to delete:",
+        error
+      );
+
+      window.alert(
+        error.response?.data
+          ?.message ||
+          "Failed to delete"
+      );
+    }
   };
 
   /*
    * Editor changes
    */
-  const handleEditorChange = (value) => {
-    const newContent = value ?? "";
+  const handleEditorChange = (
+    value
+  ) => {
+    const newContent =
+      value ?? "";
 
-    if (isRemoteUpdate.current) {
-      isRemoteUpdate.current = false;
+    if (
+      isRemoteUpdate.current
+    ) {
+      isRemoteUpdate.current =
+        false;
 
       setCode(newContent);
 
@@ -647,48 +1556,85 @@ const WorkspacePage = () => {
       return;
     }
 
-    socket.emit("file:change", {
-      workspaceId,
-      fileId: activeFileId,
-      content: newContent,
-    });
+    socket.emit(
+      "file:change",
+      {
+        workspaceId,
+        fileId:
+          activeFileId,
+        content:
+          newContent,
+      }
+    );
   };
 
   /*
    * Manual save
+   *
+   * The current backend does not expose
+   * a file:save Socket.IO event.
+   *
+   * Therefore manual Save uses the existing
+   * REST file update endpoint.
    */
   const handleSave = async () => {
-    if (!activeFile || isSaving) {
+    if (
+      !activeFile ||
+      isSaving
+    ) {
       return;
     }
 
     try {
       setIsSaving(true);
-
-      const response =
-        await api.patch(
-          `/api/workspaces/${workspaceId}/files/${activeFile._id}`,
-          {
-            content: code,
-          }
-        );
+      setOutput("");
 
       const updatedFile =
-        response.data.file;
+        await updateWorkspaceFile({
+          workspaceId,
+          fileId:
+            activeFile._id,
+
+          fileData: {
+            content: code,
+          },
+        });
 
       setFiles((currentFiles) =>
-        currentFiles.map((file) =>
-          file._id === updatedFile._id
-            ? updatedFile
-            : file
+        currentFiles.map(
+          (file) =>
+            file._id ===
+            updatedFile._id
+              ? updatedFile
+              : file
         )
       );
 
       setCode(
-        updatedFile.content || ""
+        updatedFile.content ||
+          ""
       );
 
       setIsDirty(false);
+
+      /*
+       * REST save is not automatically
+       * broadcast to collaborators by
+       * the current backend controller.
+       *
+       * Broadcast the update through the
+       * existing socket event.
+       */
+      if (socket.connected) {
+        socket.emit(
+          "file:updated",
+          {
+            workspaceId,
+            fileId:
+              updatedFile._id,
+          }
+        );
+      }
     } catch (error) {
       console.error(
         "Failed to save file:",
@@ -696,8 +1642,9 @@ const WorkspacePage = () => {
       );
 
       setOutput(
-        error.response?.data?.message ||
-          "Failed to save file"
+        error.response?.data
+          ?.message ||
+          "Failed to save file."
       );
     } finally {
       setIsSaving(false);
@@ -708,20 +1655,29 @@ const WorkspacePage = () => {
    * Run code
    */
   const handleRun = async () => {
-    if (!activeFile || isRunning) {
+    if (
+      !activeFile ||
+      isRunning
+    ) {
       return;
     }
 
     try {
       setIsRunning(true);
-      setOutput("Running code...\n");
+
+      setOutput(
+        "Running code...\n"
+      );
 
       const response =
         await api.post(
           "/api/execution/run",
           {
-            language: editorLanguage,
+            language:
+              editorLanguage,
+
             code,
+
             stdin: "",
           }
         );
@@ -729,7 +1685,8 @@ const WorkspacePage = () => {
       const result =
         response.data.result;
 
-      let executionOutput = "";
+      let executionOutput =
+        "";
 
       if (result?.stdout) {
         executionOutput +=
@@ -738,7 +1695,8 @@ const WorkspacePage = () => {
 
       if (result?.stderr) {
         if (executionOutput) {
-          executionOutput += "\n";
+          executionOutput +=
+            "\n";
         }
 
         executionOutput +=
@@ -752,15 +1710,19 @@ const WorkspacePage = () => {
       }
 
       if (
-        result?.exitCode !== null &&
-        result?.exitCode !== undefined &&
+        result?.exitCode !==
+          null &&
+        result?.exitCode !==
+          undefined &&
         result.exitCode !== 0
       ) {
         executionOutput +=
           `\n\nProcess exited with code: ${result.exitCode}`;
       }
 
-      setOutput(executionOutput);
+      setOutput(
+        executionOutput
+      );
     } catch (error) {
       console.error(
         "Code execution failed:",
@@ -768,8 +1730,10 @@ const WorkspacePage = () => {
       );
 
       const serverMessage =
-        error.response?.data?.error ||
-        error.response?.data?.message;
+        error.response?.data
+          ?.error ||
+        error.response?.data
+          ?.message;
 
       setOutput(
         serverMessage ||
@@ -800,7 +1764,10 @@ const WorkspacePage = () => {
   /*
    * Error state
    */
-  if (error || !workspace) {
+  if (
+    error ||
+    !workspace
+  ) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center bg-[#0d0e10] px-6 text-center">
         <div className="mb-3 text-sm font-semibold text-zinc-300">
@@ -920,9 +1887,11 @@ const WorkspacePage = () => {
               text-[9px]
 
               ${
-                isDirty
-                  ? "border-amber-400/10 bg-amber-400/[0.04] text-amber-400/70"
-                  : "border-emerald-400/10 bg-emerald-400/[0.04] text-emerald-400/70"
+                isSaving
+                  ? "border-blue-400/10 bg-blue-400/[0.04] text-blue-400/70"
+                  : isDirty
+                    ? "border-amber-400/10 bg-amber-400/[0.04] text-amber-400/70"
+                    : "border-emerald-400/10 bg-emerald-400/[0.04] text-emerald-400/70"
               }
             `}
           >
@@ -931,9 +1900,11 @@ const WorkspacePage = () => {
                 h-1.5 w-1.5 rounded-full
 
                 ${
-                  isDirty
-                    ? "bg-amber-400"
-                    : "bg-emerald-400"
+                  isSaving
+                    ? "bg-blue-400"
+                    : isDirty
+                      ? "bg-amber-400"
+                      : "bg-emerald-400"
                 }
               `}
             />
@@ -956,7 +1927,8 @@ const WorkspacePage = () => {
             title="Collaborators"
             onClick={() =>
               setShowCollaborators(
-                (current) => !current
+                (current) =>
+                  !current
               )
             }
             className={`
@@ -976,7 +1948,8 @@ const WorkspacePage = () => {
           >
             <Users size={15} />
 
-            {collaborators.length > 0 && (
+            {collaborators.length >
+              0 && (
               <span
                 className="
                   absolute
@@ -1005,7 +1978,10 @@ const WorkspacePage = () => {
           <button
             type="button"
             onClick={handleSave}
-            disabled={!isDirty || isSaving}
+            disabled={
+              !isDirty ||
+              isSaving
+            }
             title="Save"
             className="
               hidden h-8
@@ -1105,8 +2081,6 @@ const WorkspacePage = () => {
             shadow-black/40
           "
         >
-          {/* Panel header */}
-
           <div
             className="
               flex
@@ -1124,7 +2098,8 @@ const WorkspacePage = () => {
 
               <div className="mt-0.5 text-[9px] text-zinc-600">
                 {collaborators.length}{" "}
-                {collaborators.length === 1
+                {collaborators.length ===
+                1
                   ? "person"
                   : "people"}{" "}
                 online
@@ -1134,7 +2109,9 @@ const WorkspacePage = () => {
             <button
               type="button"
               onClick={() =>
-                setShowCollaborators(false)
+                setShowCollaborators(
+                  false
+                )
               }
               className="
                 flex h-6 w-6
@@ -1150,10 +2127,9 @@ const WorkspacePage = () => {
             </button>
           </div>
 
-          {/* Users */}
-
           <div className="max-h-72 overflow-y-auto p-2">
-            {collaborators.length === 0 ? (
+            {collaborators.length ===
+            0 ? (
               <div
                 className="
                   px-3
@@ -1170,7 +2146,9 @@ const WorkspacePage = () => {
               collaborators.map(
                 (collaborator) => (
                   <div
-                    key={collaborator.userId}
+                    key={
+                      collaborator.userId
+                    }
                     className="
                       flex
                       items-center
@@ -1182,8 +2160,6 @@ const WorkspacePage = () => {
                       hover:bg-white/[0.03]
                     "
                   >
-                    {/* Avatar */}
-
                     <div
                       className="
                         relative
@@ -1220,8 +2196,6 @@ const WorkspacePage = () => {
                       />
                     </div>
 
-                    {/* User info */}
-
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[10px] font-medium text-zinc-300">
                         {collaborator.username ||
@@ -1231,8 +2205,10 @@ const WorkspacePage = () => {
                       </div>
 
                       <div className="mt-0.5 text-[9px] text-zinc-700">
-                        {collaborator.role ||
-                          "Collaborator"}
+                        {collaborator.activeFileId
+                          ? "Editing a file"
+                          : collaborator.role ||
+                            "Collaborator"}
                       </div>
                     </div>
                   </div>
@@ -1279,95 +2255,89 @@ const WorkspacePage = () => {
               Explorer
             </span>
 
-            <button
-              type="button"
-              className="
-                flex h-6 w-6
-                items-center
-                justify-center
-                rounded
-                text-zinc-700
-                hover:bg-white/[0.04]
-                hover:text-zinc-300
-              "
-            >
-              <MoreHorizontal size={14} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  handleCreateFile()
+                }
+                title="New File"
+                className="
+                  flex h-6 w-6
+                  items-center
+                  justify-center
+                  rounded
+                  text-zinc-700
+                  hover:bg-white/[0.04]
+                  hover:text-zinc-300
+                "
+              >
+                <Plus size={14} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleCreateFolder()
+                }
+                title="New Folder"
+                className="
+                  flex h-6 w-6
+                  items-center
+                  justify-center
+                  rounded
+                  text-zinc-700
+                  hover:bg-white/[0.04]
+                  hover:text-zinc-300
+                "
+              >
+                <Folder size={14} />
+              </button>
+            </div>
           </div>
 
-          {/* Files */}
+          {/* File tree */}
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {/* Root */}
-
-            <div className="mb-1 flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-zinc-400">
-              <ChevronDown size={12} />
-
-              <Folder
-                size={13}
-                className="text-[#dc9458]"
-              />
-
-              <span>Workspace</span>
-            </div>
-
-            {/* Loading */}
-
             {filesLoading ? (
-              <div className="px-7 py-3 text-[10px] text-zinc-700">
+              <div className="px-2 py-3 text-[10px] text-zinc-700">
                 Loading files...
               </div>
-            ) : files.length === 0 ? (
-              <div className="px-7 py-3 text-[10px] text-zinc-700">
-                No files
-              </div>
             ) : (
-              files.map((file) => {
-                const isActive =
-                  file._id ===
-                  activeFileId;
+              <>
+                <div className="mb-1 flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-zinc-400">
+                  <Folder
+                    size={13}
+                    className="text-[#dc9458]"
+                  />
 
-                return (
-                  <button
-                    key={file._id}
-                    type="button"
-                    onClick={() =>
-                      handleFileSelect(
-                        file
-                      )
-                    }
-                    className={`
-                      flex w-full
-                      items-center
-                      gap-2
-                      rounded-md
-                      px-7 py-2
-                      text-left
-                      text-[10px]
-                      transition
+                  <span>
+                    Workspace
+                  </span>
+                </div>
 
-                      ${
-                        isActive
-                          ? "bg-[#dc9458]/[0.08] text-zinc-200"
-                          : "text-zinc-600 hover:bg-white/[0.03] hover:text-zinc-300"
-                      }
-                    `}
-                  >
-                    <FileCode2
-                      size={13}
-                      className={
-                        isActive
-                          ? "text-[#dc9458]"
-                          : "text-zinc-600"
-                      }
-                    />
-
-                    <span className="truncate">
-                      {file.name}
-                    </span>
-                  </button>
-                );
-              })
+                <FileTree
+                  files={files}
+                  activeFileId={
+                    activeFileId
+                  }
+                  onFileSelect={
+                    handleFileSelect
+                  }
+                  onCreateFile={
+                    handleCreateFile
+                  }
+                  onCreateFolder={
+                    handleCreateFolder
+                  }
+                  onRename={
+                    handleRename
+                  }
+                  onDelete={
+                    handleDelete
+                  }
+                />
+              </>
             )}
           </div>
 
@@ -1404,116 +2374,129 @@ const WorkspacePage = () => {
               bg-[#111214]
             "
           >
-            <div
-              className="
-                flex h-full
-                items-center
-                gap-2
-                border-r border-white/[0.05]
-                border-t-2
-                border-t-[#dc9458]
-                bg-[#0d0e10]
-                px-4
-                text-[10px]
-                text-zinc-300
-              "
-            >
-              <FileCode2
-                size={13}
-                className="text-[#dc9458]"
-              />
+            {activeFile && (
+              <div
+                className="
+                  flex h-full
+                  items-center
+                  gap-2
+                  border-r border-white/[0.05]
+                  border-t-2
+                  border-t-[#dc9458]
+                  bg-[#0d0e10]
+                  px-4
+                  text-[10px]
+                  text-zinc-300
+                "
+              >
+                <FileCode2
+                  size={13}
+                  className="text-[#dc9458]"
+                />
 
-              {fileName}
+                {fileName}
 
-              {isDirty && (
-                <span className="ml-1 text-[#dc9458]">
-                  ●
-                </span>
-              )}
-            </div>
+                {isDirty && (
+                  <span className="ml-1 text-[#dc9458]">
+                    ●
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Editor */}
 
           <div className="relative min-h-0 flex-1 overflow-hidden bg-[#0b0c0e]">
-            <Editor
-              height="100%"
-              width="100%"
-              language={editorLanguage}
-              value={code}
-              onChange={
-                handleEditorChange
-              }
-              theme="vs-dark"
-              options={{
-                automaticLayout: true,
+            {activeFile ? (
+              <Editor
+                height="100%"
+                width="100%"
+                language={
+                  editorLanguage
+                }
+                value={code}
+                onChange={
+                  handleEditorChange
+                }
+                theme="vs-dark"
+                options={{
+                  automaticLayout: true,
 
-                minimap: {
-                  enabled: false,
-                },
+                  minimap: {
+                    enabled: false,
+                  },
 
-                fontSize: 13,
+                  fontSize: 13,
 
-                lineHeight: 22,
+                  lineHeight: 22,
 
-                fontFamily:
-                  "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+                  fontFamily:
+                    "'JetBrains Mono', 'Fira Code', Consolas, monospace",
 
-                padding: {
-                  top: 16,
-                  bottom: 16,
-                },
+                  padding: {
+                    top: 16,
+                    bottom: 16,
+                  },
 
-                scrollBeyondLastLine:
-                  false,
+                  scrollBeyondLastLine:
+                    false,
 
-                smoothScrolling: true,
+                  smoothScrolling: true,
 
-                cursorSmoothCaretAnimation:
-                  "on",
+                  cursorSmoothCaretAnimation:
+                    "on",
 
-                renderWhitespace:
-                  "selection",
+                  renderWhitespace:
+                    "selection",
 
-                roundedSelection: false,
+                  roundedSelection:
+                    false,
 
-                folding: true,
+                  folding: true,
 
-                wordWrap: "on",
+                  wordWrap: "on",
 
-                tabSize: 2,
+                  tabSize: 2,
 
-                insertSpaces: true,
+                  insertSpaces: true,
 
-                suggestOnTriggerCharacters:
-                  true,
+                  suggestOnTriggerCharacters:
+                    true,
 
-                quickSuggestions: true,
+                  quickSuggestions:
+                    true,
 
-                parameterHints: {
-                  enabled: true,
-                },
+                  parameterHints: {
+                    enabled: true,
+                  },
 
-                bracketPairColorization: {
-                  enabled: true,
-                },
+                  bracketPairColorization: {
+                    enabled: true,
+                  },
 
-                guides: {
-                  indentation: true,
-                  bracketPairs: true,
-                },
+                  guides: {
+                    indentation: true,
+                    bracketPairs: true,
+                  },
 
-                scrollbar: {
-                  verticalScrollbarSize: 8,
-                  horizontalScrollbarSize: 8,
-                },
+                  scrollbar: {
+                    verticalScrollbarSize: 8,
+                    horizontalScrollbarSize: 8,
+                  },
 
-                overviewRulerBorder: false,
+                  overviewRulerBorder:
+                    false,
 
-                hideCursorInOverviewRuler:
-                  true,
-              }}
-            />
+                  hideCursorInOverviewRuler:
+                    true,
+                }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-zinc-700">
+                Select a file to start coding.
+              </div>
+            )}
           </div>
 
           {/* Output */}

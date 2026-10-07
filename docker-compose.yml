@@ -12,6 +12,7 @@ services:
       - /app/node_modules
     depends_on:
       - redis
+      - piston
     restart: unless-stopped
 
   redis:
@@ -21,6 +22,14 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: devspace-piston
+    privileged: true
+    ports:
+      - "2000:2000"
     restart: unless-stopped
 
 volumes:

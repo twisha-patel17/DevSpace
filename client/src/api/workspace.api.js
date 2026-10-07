@@ -1,7 +1,9 @@
 import api from "./axios";
 
 export const getWorkspaces = async () => {
-  const response = await api.get("/api/workspaces");
+  const response = await api.get(
+    "/api/workspaces"
+  );
 
   return response.data.workspaces;
 };
@@ -22,7 +24,9 @@ export const getSharedWorkspaces = async () => {
   return response.data.workspaces;
 };
 
-export const getWorkspace = async (workspaceId) => {
+export const getWorkspace = async (
+  workspaceId
+) => {
   const response = await api.get(
     `/api/workspaces/${workspaceId}`
   );
@@ -30,7 +34,9 @@ export const getWorkspace = async (workspaceId) => {
   return response.data.workspace;
 };
 
-export const createWorkspace = async (workspaceData) => {
+export const createWorkspace = async (
+  workspaceData
+) => {
   const response = await api.post(
     "/api/workspaces",
     workspaceData
@@ -51,7 +57,9 @@ export const updateWorkspace = async ({
   return response.data.workspace;
 };
 
-export const deleteWorkspace = async (workspaceId) => {
+export const deleteWorkspace = async (
+  workspaceId
+) => {
   const response = await api.delete(
     `/api/workspaces/${workspaceId}`
   );
@@ -59,7 +67,19 @@ export const deleteWorkspace = async (workspaceId) => {
   return response.data;
 };
 
-export const getWorkspaceFiles = async (workspaceId) => {
+export const markWorkspaceOpened = async (
+  workspaceId
+) => {
+  const response = await api.patch(
+    `/api/workspaces/${workspaceId}/opened`
+  );
+
+  return response.data.workspace;
+};
+
+export const getWorkspaceFiles = async (
+  workspaceId
+) => {
   const response = await api.get(
     `/api/workspaces/${workspaceId}/files`
   );
@@ -98,6 +118,49 @@ export const deleteWorkspaceFile = async ({
 }) => {
   const response = await api.delete(
     `/api/workspaces/${workspaceId}/files/${fileId}`
+  );
+
+  return response.data;
+};
+
+export const addWorkspaceMember = async ({
+  workspaceId,
+  memberUserId,
+  role,
+}) => {
+  const response = await api.post(
+    `/api/workspaces/${workspaceId}/members`,
+    {
+      userId: memberUserId,
+      role,
+    }
+  );
+
+  return response.data.workspace;
+};
+
+export const updateWorkspaceMemberRole =
+  async ({
+    workspaceId,
+    memberUserId,
+    role,
+  }) => {
+    const response = await api.patch(
+      `/api/workspaces/${workspaceId}/members/${memberUserId}`,
+      {
+        role,
+      }
+    );
+
+    return response.data.workspace;
+  };
+
+export const removeWorkspaceMember = async ({
+  workspaceId,
+  memberUserId,
+}) => {
+  const response = await api.delete(
+    `/api/workspaces/${workspaceId}/members/${memberUserId}`
   );
 
   return response.data;

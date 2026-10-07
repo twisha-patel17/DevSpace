@@ -1,661 +1,844 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useState,
+} from "react";
 
 import {
-  ArrowLeft,
-  Play,
-  Save,
-  Users,
-  Terminal,
   Folder,
-  FileCode2,
-  ChevronDown,
+  Plus,
+  Search,
+  Clock3,
+  Users,
   MoreHorizontal,
+  Trash2,
+  Pencil,
+  ArrowRight,
 } from "lucide-react";
 
-import Editor from "@monaco-editor/react";
+import {
+  useNavigate,
+} from "react-router-dom";
 
-import api from "../api/axios";
-import useAuthStore from "../store/authStore";
+import {
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useRecentWorkspaces,
+  useSharedWorkspaces,
+  useUpdateWorkspace,
+  useWorkspaces,
+} from "../lib/workspace.queries";
 
-import socket, {
-  connectSocket,
-  disconnectSocket,
-} from "../socket";
-
-const WorkspacePage = () => {
-  const { workspaceId } = useParams();
+const WorkspacesPage = () => {
   const navigate = useNavigate();
 
-  const accessToken = useAuthStore(
-    (state) => state.accessToken
-  );
+  const [search, setSearch] = useState("");
+  const [showCreateModal, setShowCreateModal] =
+    useState(false);
+  const [showEditModal, setShowEditModal] =
+    useState(false);
 
-  const [workspace, setWorkspace] = useState(null);
-  const [files, setFiles] = useState([]);
-  const [activeFileId, setActiveFileId] = useState(null);
+  const [selectedWorkspace, setSelectedWorkspace] =
+    useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [filesLoading, setFilesLoading] = useState(true);
+  const [workspaceName, setWorkspaceName] =
+    useState("");
 
-  const [error, setError] = useState("");
+  const [workspaceDescription, setWorkspaceDescription] =
+    useState("");
 
-  const [code, setCode] = useState("");
-  const [output, setOutput] = useState("");
+  const [workspaceVisibility, setWorkspaceVisibility] =
+    useState("private");
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
+  const {
+    data: workspaces = [],
+    isLoading: workspacesLoading,
+  } = useWorkspaces();
 
-  useEffect(() => {
-    if (!accessToken || !workspaceId) {
-      return;
-    }
+  const {
+    data: recentWorkspaces = [],
+    isLoading: recentLoading,
+  } = useRecentWorkspaces();
 
-    connectSocket(accessToken);
+  const {
+    data: sharedWorkspaces = [],
+    isLoading: sharedLoading,
+  } = useSharedWorkspaces();
 
-    const handleConnect = () => {
-      console.log(
-        "Socket connected:",
-        socket.id
-      );
+  const createWorkspaceMutation =
+    useCreateWorkspace();
 
-      socket.emit("workspace:join", {
-        workspaceId,
-      });
-    };
+  const updateWorkspaceMutation =
+    useUpdateWorkspace();
 
-    const handleWorkspaceJoined = (data) => {
-      console.log(
-        "Joined workspace:",
-        data.workspaceId
-      );
-    };
+  const deleteWorkspaceMutation =
+    useDeleteWorkspace();
 
-    const handleWorkspaceError = (data) => {
-      console.error(
-        "Workspace socket error:",
-        data.message
-      );
-    };
+  const filteredWorkspaces =
+    workspaces.filter((workspace) => {
+      const query = search
+        .trim()
+        .toLowerCase();
 
-    socket.on("connect", handleConnect);
-
-    socket.on(
-      "workspace:joined",
-      handleWorkspaceJoined
-    );
-
-    socket.on(
-      "workspace:error",
-      handleWorkspaceError
-    );
-
-    if (socket.connected) {
-      handleConnect();
-    }
-
-    return () => {
-      socket.emit("workspace:leave", {
-        workspaceId,
-      });
-
-      socket.off("connect", handleConnect);
-
-      socket.off(
-        "workspace:joined",
-        handleWorkspaceJoined
-      );
-
-      socket.off(
-        "workspace:error",
-        handleWorkspaceError
-      );
-
-      disconnectSocket();
-    };
-  }, [accessToken, workspaceId]);
-
-
-  useEffect(() => {
-    const fetchWorkspace = async () => {
-      try {
-        setLoading(true);
-        setError("");
-
-        const workspaceResponse = await api.get(
-          `/workspaces/${workspaceId}`
-        );
-
-        setWorkspace(workspaceResponse.data.workspace);
-
-        try {
-          await api.patch(
-            `/workspaces/${workspaceId}/opened`
-          );
-        } catch (openedError) {
-          console.error(
-            "Failed to mark workspace as opened:",
-            openedError
-          );
-        }
-
-        setFilesLoading(true);
-
-        const filesResponse = await api.get(
-          `/workspaces/${workspaceId}/files`
-        );
-
-        let workspaceFiles =
-          filesResponse.data.files || [];
-
-        if (workspaceFiles.length === 0) {
-          try {
-            const createResponse = await api.post(
-              `/workspaces/${workspaceId}/files`,
-              {
-                name: "App.jsx",
-                path: "App.jsx",
-                type: "file",
-                language: "javascript",
-                content:
-                  'export default function App() {\n  return <h1>Hello DevSpace</h1>;\n}',
-              }
-            );
-
-            workspaceFiles = [
-              createResponse.data.file,
-            ];
-          } catch (createError) {
-            console.error(
-              "Failed to create default file:",
-              createError
-            );
-          }
-        }
-
-        setFiles(workspaceFiles);
-
-        if (workspaceFiles.length > 0) {
-          const firstFile = workspaceFiles.find(
-            (file) => file.type === "file"
-          );
-
-          if (firstFile) {
-            setActiveFileId(firstFile._id);
-            setCode(firstFile.content || "");
-            setIsDirty(false);
-          }
-        }
-      } catch (err) {
-        console.error(
-          "Failed to load workspace:",
-          err
-        );
-
-        setError(
-          err.response?.data?.message ||
-            "Failed to load workspace"
-        );
-      } finally {
-        setLoading(false);
-        setFilesLoading(false);
+      if (!query) {
+        return true;
       }
-    };
 
-    if (workspaceId) {
-      fetchWorkspace();
-    }
-  }, [workspaceId]);
-
-
-  const activeFile = useMemo(() => {
-    return (
-      files.find(
-        (file) => file._id === activeFileId
-      ) || null
-    );
-  }, [files, activeFileId]);
-
-  const editorLanguage = useMemo(() => {
-    if (!activeFile) {
-      return "javascript";
-    }
-
-    if (activeFile.language) {
-      return activeFile.language;
-    }
-
-    const extension =
-      activeFile.name
-        ?.split(".")
-        .pop()
-        ?.toLowerCase();
-
-    const languageMap = {
-      js: "javascript",
-      jsx: "javascript",
-      ts: "typescript",
-      tsx: "typescript",
-      json: "json",
-      html: "html",
-      css: "css",
-      scss: "scss",
-      md: "markdown",
-      py: "python",
-      cpp: "cpp",
-      c: "c",
-      java: "java",
-    };
-
-    return (
-      languageMap[extension] ||
-      "plaintext"
-    );
-  }, [activeFile]);
-
-  const fileName = activeFile?.name || "No file selected";
-
-  const handleFileSelect = (file) => {
-    if (file.type === "folder") {
-      return;
-    }
-
-    if (isDirty) {
-      const shouldSwitch = window.confirm(
-        "You have unsaved changes. Switch files anyway?"
+      return (
+        workspace.name
+          ?.toLowerCase()
+          .includes(query) ||
+        workspace.description
+          ?.toLowerCase()
+          .includes(query)
       );
+    });
 
-      if (!shouldSwitch) {
-        return;
+  const filteredRecentWorkspaces =
+    recentWorkspaces.filter((workspace) => {
+      const query = search
+        .trim()
+        .toLowerCase();
+
+      if (!query) {
+        return true;
       }
-    }
 
-    setActiveFileId(file._id);
-    setCode(file.content || "");
-    setIsDirty(false);
-  };
+      return workspace.name
+        ?.toLowerCase()
+        .includes(query);
+    });
 
-  const handleEditorChange = (value) => {
-    setCode(value || "");
-    setIsDirty(true);
-  };
+  const filteredSharedWorkspaces =
+    sharedWorkspaces.filter((workspace) => {
+      const query = search
+        .trim()
+        .toLowerCase();
 
-  const handleSave = async () => {
-    if (!activeFile) {
+      if (!query) {
+        return true;
+      }
+
+      return workspace.name
+        ?.toLowerCase()
+        .includes(query);
+    });
+
+  const handleCreateWorkspace = async (
+    event
+  ) => {
+    event.preventDefault();
+
+    if (!workspaceName.trim()) {
       return;
     }
 
     try {
-      setIsSaving(true);
+      const workspace =
+        await createWorkspaceMutation.mutateAsync(
+          {
+            name: workspaceName.trim(),
+            description:
+              workspaceDescription.trim(),
+            visibility:
+              workspaceVisibility,
+          }
+        );
 
-      const response = await api.patch(
-        `/workspaces/${workspaceId}/files/${activeFile._id}`,
-        {
-          content: code,
-        }
-      );
+      setShowCreateModal(false);
 
-      const updatedFile =
-        response.data.file;
+      setWorkspaceName("");
+      setWorkspaceDescription("");
+      setWorkspaceVisibility("private");
 
-      setFiles((currentFiles) =>
-        currentFiles.map((file) =>
-          file._id === updatedFile._id
-            ? updatedFile
-            : file
-        )
-      );
-
-      setIsDirty(false);
-
-      console.log("File saved successfully");
-    } catch (err) {
+      if (workspace?._id) {
+        navigate(
+          `/workspaces/${workspace._id}`
+        );
+      }
+    } catch (error) {
       console.error(
-        "Failed to save file:",
-        err
+        "Failed to create workspace:",
+        error
       );
-
-      setError(
-        err.response?.data?.message ||
-          "Failed to save file"
-      );
-    } finally {
-      setIsSaving(false);
     }
   };
 
-  const handleRun = async () => {
-    if (!activeFile) {
+  const openEditModal = (
+    workspace
+  ) => {
+    setSelectedWorkspace(workspace);
+
+    setWorkspaceName(
+      workspace.name || ""
+    );
+
+    setWorkspaceDescription(
+      workspace.description || ""
+    );
+
+    setWorkspaceVisibility(
+      workspace.visibility || "private"
+    );
+
+    setShowEditModal(true);
+  };
+
+  const handleUpdateWorkspace = async (
+    event
+  ) => {
+    event.preventDefault();
+
+    if (
+      !selectedWorkspace ||
+      !workspaceName.trim()
+    ) {
       return;
     }
 
     try {
-      setIsRunning(true);
-      setOutput("");
-
-      const response = await api.post(
-        "/execution/run",
+      await updateWorkspaceMutation.mutateAsync(
         {
-          language: editorLanguage,
-          code,
-          stdin: "",
+          workspaceId:
+            selectedWorkspace._id,
+
+          workspaceData: {
+            name: workspaceName.trim(),
+            description:
+              workspaceDescription.trim(),
+            visibility:
+              workspaceVisibility,
+          },
         }
       );
 
-      setOutput(
-        response.data.output ||
-          response.data.stdout ||
-          "Program finished successfully."
-      );
-    } catch (err) {
+      setShowEditModal(false);
+      setSelectedWorkspace(null);
+
+      setWorkspaceName("");
+      setWorkspaceDescription("");
+      setWorkspaceVisibility("private");
+    } catch (error) {
       console.error(
-        "Failed to run code:",
-        err
+        "Failed to update workspace:",
+        error
       );
-
-      setOutput(
-        err.response?.data?.message ||
-          "Failed to execute code."
-      );
-    } finally {
-      setIsRunning(false);
     }
   };
 
-  const handleBack = () => {
-    if (isDirty) {
-      const shouldLeave = window.confirm(
-        "You have unsaved changes. Leave workspace anyway?"
+  const handleDeleteWorkspace = async (
+    workspace
+  ) => {
+    const confirmed =
+      window.confirm(
+        `Delete workspace "${workspace.name}"? This will also delete all files inside it.`
       );
 
-      if (!shouldLeave) {
-        return;
-      }
+    if (!confirmed) {
+      return;
     }
 
-    navigate("/recent");
+    try {
+      await deleteWorkspaceMutation.mutateAsync(
+        workspace._id
+      );
+    } catch (error) {
+      console.error(
+        "Failed to delete workspace:",
+        error
+      );
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#09090b] text-zinc-400">
-        Loading workspace...
-      </div>
+  const openWorkspace = (
+    workspace
+  ) => {
+    navigate(
+      `/workspaces/${workspace._id}`
     );
-  }
+  };
 
+  const formatDate = (
+    date
+  ) => {
+    if (!date) {
+      return "No recent activity";
+    }
 
-  if (error && !workspace) {
+    return new Date(
+      date
+    ).toLocaleDateString(
+      undefined,
+      {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }
+    );
+  };
+
+  const WorkspaceCard = ({
+    workspace,
+    shared = false,
+  }) => {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#09090b] text-zinc-400">
-        <p>{error}</p>
-
+      <div
+        className="group relative rounded-xl border border-zinc-800 bg-[#0d0d0f] p-4 transition hover:border-zinc-700 hover:bg-[#111114]"
+      >
         <button
-          onClick={handleBack}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 transition hover:bg-zinc-800"
+          type="button"
+          onClick={() =>
+            openWorkspace(workspace)
+          }
+          className="w-full text-left"
         >
-          Back
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-200">
-     
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d0d0f] px-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
-            title="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
-
-          <div className="h-5 w-px bg-zinc-800" />
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-white">
-                {workspace?.name}
-              </h1>
-
-              <ChevronDown
-                size={14}
-                className="text-zinc-500"
-              />
+          <div className="mb-4 flex items-start justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
+              <Folder size={19} />
             </div>
 
-            <p className="text-xs text-zinc-500">
-              {workspace?.language ||
-                "Blank"}{" "}
-              · {workspace?.visibility}
+            <ArrowRight
+              size={16}
+              className="text-zinc-700 transition group-hover:translate-x-0.5 group-hover:text-zinc-400"
+            />
+          </div>
+
+          <h3 className="truncate text-sm font-semibold text-zinc-100">
+            {workspace.name}
+          </h3>
+
+          <p className="mt-1 min-h-[20px] truncate text-xs text-zinc-500">
+            {workspace.description ||
+              "No description"}
+          </p>
+
+          <div className="mt-4 flex items-center gap-3 text-[11px] text-zinc-600">
+            <span className="flex items-center gap-1">
+              <Clock3 size={12} />
+              {formatDate(
+                workspace.updatedAt
+              )}
+            </span>
+
+            <span className="flex items-center gap-1">
+              <Users size={12} />
+              {workspace.members?.length ||
+                0}
+            </span>
+
+            {shared && (
+              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-400">
+                Shared
+              </span>
+            )}
+          </div>
+        </button>
+
+        {!shared && (
+          <div className="absolute right-3 top-3">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+              className="rounded-md p-1.5 text-zinc-600 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-300 group-hover:opacity-100"
+            >
+              <MoreHorizontal
+                size={16}
+              />
+            </button>
+
+            <div className="pointer-events-none absolute right-0 top-8 z-20 hidden w-36 rounded-lg border border-zinc-800 bg-[#111114] p-1 shadow-xl group-focus-within:block">
+              <button
+                type="button"
+                onClick={() =>
+                  openEditModal(
+                    workspace
+                  )
+                }
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
+              >
+                <Pencil size={13} />
+                Rename
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleDeleteWorkspace(
+                    workspace
+                  )
+                }
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-400 hover:bg-red-500/10"
+              >
+                <Trash2 size={13} />
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const WorkspaceGrid = ({
+    items,
+    loading,
+    emptyMessage,
+    shared = false,
+  }) => {
+    if (loading) {
+      return (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map(
+            (item) => (
+              <div
+                key={item}
+                className="h-40 animate-pulse rounded-xl border border-zinc-800 bg-[#0d0d0f]"
+              />
+            )
+          )}
+        </div>
+      );
+    }
+
+    if (!items.length) {
+      return (
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-[#0d0d0f]/50 px-6 py-12 text-center">
+          <Folder
+            size={24}
+            className="mx-auto text-zinc-700"
+          />
+
+          <p className="mt-3 text-sm text-zinc-500">
+            {emptyMessage}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {items.map(
+          (workspace) => (
+            <WorkspaceCard
+              key={workspace._id}
+              workspace={workspace}
+              shared={shared}
+            />
+          )
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-zinc-200">
+
+      {/* Header */}
+
+      <header className="border-b border-zinc-800 bg-[#0d0d0f]">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+
+          <div>
+            <h1 className="text-xl font-semibold text-white">
+              Workspaces
+            </h1>
+
+            <p className="mt-1 text-sm text-zinc-500">
+              Build, manage, and collaborate
+              on your projects.
             </p>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Collaborators */}
           <button
-            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-800 hover:text-white"
-          >
-            <Users size={15} />
-
-            <span>Collaborators</span>
-          </button>
-
-          {/* Save */}
-          <button
-            onClick={handleSave}
-            disabled={
-              !activeFile ||
-              !isDirty ||
-              isSaving
+            type="button"
+            onClick={() =>
+              setShowCreateModal(true)
             }
-            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500"
           >
-            <Save size={15} />
-
-            {isSaving ? "Saving..." : "Save"}
+            <Plus size={16} />
+            New Workspace
           </button>
 
-          {/* Run */}
-          <button
-            onClick={handleRun}
-            disabled={
-              !activeFile || isRunning
-            }
-            className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Play size={15} />
-
-            {isRunning ? "Running..." : "Run"}
-          </button>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-       
-        <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-[#0d0d0f]">
-          {/* Explorer Header */}
-          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4">
-            <div className="flex items-center gap-2">
-              <Folder
-                size={15}
-                className="text-zinc-500"
-              />
+      {/* Content */}
 
-              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                Explorer
-              </span>
+      <main className="mx-auto max-w-7xl px-6 py-8">
+
+        {/* Search */}
+
+        <div className="mb-8 flex items-center gap-3">
+
+          <div className="relative max-w-md flex-1">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
+            />
+
+            <input
+              type="text"
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
+              }
+              placeholder="Search workspaces..."
+              className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] py-2.5 pl-9 pr-3 text-sm text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-violet-500/50"
+            />
+          </div>
+
+        </div>
+
+        {/* Recent */}
+
+        <section className="mb-10">
+
+          <div className="mb-4 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-200">
+                Recent
+              </h2>
+
+              <p className="mt-1 text-xs text-zinc-600">
+                Workspaces you've opened recently.
+              </p>
             </div>
 
-            <button
-              className="rounded p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
-              title="More"
+          </div>
+
+          <WorkspaceGrid
+            items={
+              filteredRecentWorkspaces
+            }
+            loading={recentLoading}
+            emptyMessage="No recently opened workspaces."
+          />
+
+        </section>
+
+        {/* My Workspaces */}
+
+        <section className="mb-10">
+
+          <div className="mb-4 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-200">
+                My Workspaces
+              </h2>
+
+              <p className="mt-1 text-xs text-zinc-600">
+                Workspaces you own.
+              </p>
+            </div>
+
+            <span className="text-xs text-zinc-600">
+              {filteredWorkspaces.length}{" "}
+              workspace
+              {filteredWorkspaces.length !==
+              1
+                ? "s"
+                : ""}
+            </span>
+
+          </div>
+
+          <WorkspaceGrid
+            items={
+              filteredWorkspaces
+            }
+            loading={
+              workspacesLoading
+            }
+            emptyMessage="You haven't created any workspaces yet."
+          />
+
+        </section>
+
+        {/* Shared */}
+
+        <section>
+
+          <div className="mb-4">
+
+            <h2 className="text-sm font-semibold text-zinc-200">
+              Shared With Me
+            </h2>
+
+            <p className="mt-1 text-xs text-zinc-600">
+              Workspaces other people have
+              shared with you.
+            </p>
+
+          </div>
+
+          <WorkspaceGrid
+            items={
+              filteredSharedWorkspaces
+            }
+            loading={sharedLoading}
+            emptyMessage="No workspaces have been shared with you."
+            shared
+          />
+
+        </section>
+
+      </main>
+
+      {/* Create Modal */}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+
+          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl">
+
+            <div className="mb-6">
+              <h2 className="text-base font-semibold text-white">
+                Create Workspace
+              </h2>
+
+              <p className="mt-1 text-xs text-zinc-500">
+                Create a new environment for
+                your project.
+              </p>
+            </div>
+
+            <form
+              onSubmit={
+                handleCreateWorkspace
+              }
+              className="space-y-4"
             >
-              <MoreHorizontal size={16} />
-            </button>
-          </div>
 
-          {/* Files */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {filesLoading ? (
-              <div className="px-2 py-4 text-xs text-zinc-600">
-                Loading files...
-              </div>
-            ) : files.length === 0 ? (
-              <div className="px-2 py-4 text-xs text-zinc-600">
-                No files
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {files.map((file) => {
-                  const isActive =
-                    file._id === activeFileId;
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Name
+                </label>
 
-                  if (file.type === "folder") {
-                    return (
-                      <div
-                        key={file._id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500"
-                      >
-                        <Folder size={14} />
-
-                        <span>
-                          {file.name}
-                        </span>
-                      </div>
-                    );
+                <input
+                  autoFocus
+                  value={workspaceName}
+                  onChange={(event) =>
+                    setWorkspaceName(
+                      event.target.value
+                    )
                   }
-
-                  return (
-                    <button
-                      key={file._id}
-                      onClick={() =>
-                        handleFileSelect(file)
-                      }
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
-                        isActive
-                          ? "bg-violet-500/10 text-violet-300"
-                          : "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200"
-                      }`}
-                    >
-                      <FileCode2
-                        size={14}
-                        className={
-                          isActive
-                            ? "text-violet-400"
-                            : "text-zinc-500"
-                        }
-                      />
-
-                      <span className="truncate">
-                        {file.name}
-                      </span>
-
-                      {isActive &&
-                        isDirty && (
-                          <span className="ml-auto text-violet-400">
-                            •
-                          </span>
-                        )}
-                    </button>
-                  );
-                })}
+                  placeholder="My Project"
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50"
+                />
               </div>
-            )}
-          </div>
-        </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          {/* Editor Header */}
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d0d0f] px-4">
-            <div className="flex items-center gap-2">
-              <FileCode2
-                size={15}
-                className="text-violet-400"
-              />
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Description
+                </label>
 
-              <span className="text-xs text-zinc-300">
-                {fileName}
-              </span>
-
-              {isDirty && (
-                <span className="text-xs text-zinc-600">
-                  Unsaved
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-zinc-600">
-              <span>
-                {editorLanguage}
-              </span>
-            </div>
-          </div>
-
-          {/* Monaco */}
-          <div className="min-h-0 flex-1">
-            {activeFile ? (
-              <Editor
-                height="100%"
-                width="100%"
-                language={editorLanguage}
-                value={code}
-                onChange={handleEditorChange}
-                theme="vs-dark"
-                options={{
-                  minimap: {
-                    enabled: false,
-                  },
-                  fontSize: 14,
-                  lineNumbers: "on",
-                  roundedSelection: false,
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  padding: {
-                    top: 12,
-                  },
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-zinc-600">
-                Select a file to start coding
+                <textarea
+                  value={
+                    workspaceDescription
+                  }
+                  onChange={(event) =>
+                    setWorkspaceDescription(
+                      event.target.value
+                    )
+                  }
+                  placeholder="What are you building?"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50"
+                />
               </div>
-            )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Visibility
+                </label>
+
+                <select
+                  value={
+                    workspaceVisibility
+                  }
+                  onChange={(event) =>
+                    setWorkspaceVisibility(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                >
+                  <option value="private">
+                    Private
+                  </option>
+
+                  <option value="public">
+                    Public
+                  </option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowCreateModal(false)
+                  }
+                  className="rounded-lg border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    !workspaceName.trim() ||
+                    createWorkspaceMutation.isPending
+                  }
+                  className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {createWorkspaceMutation.isPending
+                    ? "Creating..."
+                    : "Create Workspace"}
+                </button>
+
+              </div>
+
+            </form>
+
           </div>
 
-          <div className="flex h-52 shrink-0 flex-col border-t border-zinc-800 bg-[#0d0d0f]">
-            <div className="flex h-10 items-center gap-2 border-b border-zinc-800 px-4">
-              <Terminal
-                size={15}
-                className="text-zinc-500"
-              />
+        </div>
+      )}
 
-              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                Output
-              </span>
+      {/* Edit Modal */}
+
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+
+          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl">
+
+            <div className="mb-6">
+              <h2 className="text-base font-semibold text-white">
+                Edit Workspace
+              </h2>
+
+              <p className="mt-1 text-xs text-zinc-500">
+                Update your workspace details.
+              </p>
             </div>
 
-            <div className="flex-1 overflow-auto p-4">
-              {output ? (
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-5 text-zinc-300">
-                  {output}
-                </pre>
-              ) : (
-                <p className="font-mono text-xs text-zinc-600">
-                  Run your code to see output here.
-                </p>
-              )}
-            </div>
+            <form
+              onSubmit={
+                handleUpdateWorkspace
+              }
+              className="space-y-4"
+            >
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Name
+                </label>
+
+                <input
+                  autoFocus
+                  value={workspaceName}
+                  onChange={(event) =>
+                    setWorkspaceName(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Description
+                </label>
+
+                <textarea
+                  value={
+                    workspaceDescription
+                  }
+                  onChange={(event) =>
+                    setWorkspaceDescription(
+                      event.target.value
+                    )
+                  }
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                  Visibility
+                </label>
+
+                <select
+                  value={
+                    workspaceVisibility
+                  }
+                  onChange={(event) =>
+                    setWorkspaceVisibility(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                >
+                  <option value="private">
+                    Private
+                  </option>
+
+                  <option value="public">
+                    Public
+                  </option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(
+                      false
+                    );
+                    setSelectedWorkspace(
+                      null
+                    );
+                  }}
+                  className="rounded-lg border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    !workspaceName.trim() ||
+                    updateWorkspaceMutation.isPending
+                  }
+                  className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {updateWorkspaceMutation.isPending
+                    ? "Saving..."
+                    : "Save Changes"}
+                </button>
+
+              </div>
+
+            </form>
+
           </div>
-        </main>
-      </div>
+
+        </div>
+      )}
+
     </div>
   );
 };
 
-export default WorkspacePage;
+export default WorkspacesPage;

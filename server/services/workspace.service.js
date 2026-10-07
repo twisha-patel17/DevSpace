@@ -299,8 +299,59 @@ const updateWorkspaceFile = async ({
     };
   }
 
-  if (name !== undefined) {
-    file.name = name.trim();
+  const oldPath = file.path;
+  const oldName = file.name;
+
+  if (
+    file.type === "folder" &&
+    name !== undefined &&
+    name.trim() !== oldName
+  ) {
+    const newName = name.trim();
+
+    const parentPath = oldPath.includes("/")
+      ? oldPath.substring(
+          0,
+          oldPath.lastIndexOf("/")
+        )
+      : "";
+
+    const newFolderPath = parentPath
+      ? `${parentPath}/${newName}`
+      : newName;
+
+    const childPrefix = `${oldPath}/`;
+
+    const children = await File.find({
+      workspace: workspaceId,
+      path: {
+        $regex: `^${childPrefix.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        )}`,
+      },
+    });
+
+    for (const child of children) {
+      child.path =
+        newFolderPath +
+        child.path.substring(
+          oldPath.length
+        );
+
+      await child.save();
+    }
+
+    file.name = newName;
+    file.path = newFolderPath;
+  } else {
+    if (name !== undefined) {
+      file.name = name.trim();
+    }
+
+    if (path !== undefined) {
+      file.path = path.trim();
+    }
   }
 
   if (language !== undefined) {
@@ -309,10 +360,6 @@ const updateWorkspaceFile = async ({
 
   if (content !== undefined) {
     file.content = content;
-  }
-
-  if (path !== undefined) {
-    file.path = path.trim();
   }
 
   file.updatedBy = userId;

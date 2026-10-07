@@ -1,6 +1,6 @@
 const axios = require("axios");
 
-const PISTON_URL = "http://localhost:2000/api/v2/execute";
+const PISTON_URL = `${process.env.PISTON_URL}/api/v2/execute`;
 
 const LANGUAGE_CONFIG = {
   javascript: {
