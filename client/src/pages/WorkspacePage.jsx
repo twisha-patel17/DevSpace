@@ -16,6 +16,7 @@ import {
   Folder,
   FileCode2,
   Plus,
+  X,
 } from "lucide-react";
 
 import Editor from "@monaco-editor/react";
@@ -37,254 +38,158 @@ import socket, {
   disconnectSocket,
 } from "../socket";
 
-const DEFAULT_CODE = {
-  javascript: `// Welcome to DevSpace
-
-function hello() {
-  console.log("Hello from DevSpace!");
-}
-
-hello();
-`,
-
-  react: `import React from "react";
-
-function App() {
-  return (
-    <div>
-      <h1>Hello from DevSpace!</h1>
-    </div>
-  );
-}
-
-export default App;
-`,
-
-  python: `# Welcome to DevSpace
-
-def hello():
-    print("Hello from DevSpace!")
-
-hello()
-`,
-
-  cpp: `#include <iostream>
-using namespace std;
-
-int main() {
-    cout << "Hello from DevSpace!" << endl;
-
-    return 0;
-}
-`,
-
-  blank: `// Start coding in DevSpace...
-`,
-};
+/* -------------------------------------------------------------------------- */
+/* HELPERS                                                                    */
+/* -------------------------------------------------------------------------- */
 
 const getEditorLanguage = (workspace) => {
-  const template =
-    workspace?.template?.toLowerCase();
+  const language = workspace?.language?.toLowerCase();
 
-  if (template === "javascript") {
+  if (!language) return "javascript";
+
+  if (language === "js" || language === "javascript") {
     return "javascript";
   }
 
-  if (template === "react") {
-    return "javascript";
-  }
+  if (language === "jsx") return "javascript";
+  if (language === "ts" || language === "typescript") return "typescript";
+  if (language === "tsx") return "typescript";
+  if (language === "py" || language === "python") return "python";
+  if (language === "java") return "java";
+  if (language === "cpp" || language === "c++") return "cpp";
+  if (language === "c") return "c";
+  if (language === "go") return "go";
+  if (language === "rust") return "rust";
+  if (language === "html") return "html";
+  if (language === "css") return "css";
+  if (language === "json") return "json";
+  if (language === "markdown" || language === "md") return "markdown";
 
-  if (template === "python") {
-    return "python";
-  }
-
-  if (template === "cpp") {
-    return "cpp";
-  }
-
-  const language =
-    workspace?.language?.toLowerCase();
-
-  if (language?.includes("python")) {
-    return "python";
-  }
-
-  if (
-    language?.includes("c++") ||
-    language?.includes("cpp")
-  ) {
-    return "cpp";
-  }
-
-  if (language?.includes("javascript")) {
-    return "javascript";
-  }
-
-  return "javascript";
+  return language;
 };
 
 const getDefaultFileName = (workspace) => {
-  const template =
-    workspace?.template?.toLowerCase();
+  const language = workspace?.language?.toLowerCase();
 
-  if (template === "python") {
+  if (language === "python" || language === "py") {
     return "main.py";
   }
 
-  if (template === "cpp") {
+  if (language === "cpp" || language === "c++") {
     return "main.cpp";
   }
 
-  if (template === "react") {
-    return "App.jsx";
+  if (language === "java") {
+    return "Main.java";
   }
 
-  return "main.js";
+  if (language === "c") {
+    return "main.c";
+  }
+
+  return "App.js";
 };
 
-const getDefaultFileLanguage = (workspace) => {
-  const template =
-    workspace?.template?.toLowerCase();
+const getLanguageFromFileName = (name) => {
+  const extension = name.split(".").pop()?.toLowerCase();
 
-  if (template === "python") {
-    return "python";
-  }
+  const languageMap = {
+    js: "javascript",
+    jsx: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+    py: "python",
+    java: "java",
+    cpp: "cpp",
+    cc: "cpp",
+    cxx: "cpp",
+    c: "c",
+    go: "go",
+    rs: "rust",
+    html: "html",
+    css: "css",
+    json: "json",
+    md: "markdown",
+  };
 
-  if (template === "cpp") {
-    return "cpp";
-  }
-
-  if (template === "react") {
-    return "javascript";
-  }
-
-  if (template === "javascript") {
-    return "javascript";
-  }
-
-  return "javascript";
+  return languageMap[extension] || "plaintext";
 };
 
-const getDefaultFileContent = (workspace) => {
-  const template =
-    workspace?.template?.toLowerCase() ||
-    "blank";
-
-  return (
-    DEFAULT_CODE[template] ||
-    DEFAULT_CODE.blank
-  );
-};
-
-const getLanguageFromFileName = (fileName) => {
-  const extension =
-    fileName
-      .split(".")
-      .pop()
-      ?.toLowerCase();
-
-  switch (extension) {
-    case "js":
-    case "mjs":
-    case "cjs":
-      return "javascript";
-
-    case "jsx":
-      return "javascript";
-
-    case "ts":
-    case "tsx":
-      return "typescript";
-
-    case "py":
-      return "python";
-
-    case "cpp":
-    case "cc":
-    case "cxx":
-      return "cpp";
-
-    case "c":
-      return "c";
-
-    case "java":
-      return "java";
-
-    case "json":
-      return "json";
-
-    case "html":
-      return "html";
-
-    case "css":
-      return "css";
-
-    case "md":
-      return "markdown";
-
-    case "sql":
-      return "sql";
-
-    default:
-      return "plaintext";
+const getFilePath = (name, parentId, files) => {
+  if (!parentId) {
+    return `/${name}`;
   }
+
+  const parent = files.find((file) => file._id === parentId);
+
+  if (!parent) {
+    return `/${name}`;
+  }
+
+  return `${parent.path}/${name}`;
 };
+
+const getCollaboratorInitials = (username = "") => {
+  if (!username) return "?";
+
+  const parts = username.trim().split(/\s+/);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
+/* -------------------------------------------------------------------------- */
+/* COMPONENT                                                                  */
+/* -------------------------------------------------------------------------- */
 
 const WorkspacePage = () => {
-  const { workspaceId } = useParams();
   const navigate = useNavigate();
+  const { workspaceId } = useParams();
 
-  const accessToken = useAuthStore(
-    (state) => state.accessToken
-  );
+  const { accessToken } = useAuthStore();
 
-  const [workspace, setWorkspace] =
-    useState(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [collaborators, setCollaborators] = useState([]);
 
-  const [collaborators, setCollaborators] =
-    useState([]);
-
-  const [showCollaborators, setShowCollaborators] =
-    useState(false);
+  const [showCollaborators, setShowCollaborators] = useState(false);
 
   const [files, setFiles] = useState([]);
+  const [activeFileId, setActiveFileId] = useState(null);
 
-  const [activeFileId, setActiveFileId] =
-    useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(true);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [error, setError] = useState("");
 
-  const [filesLoading, setFilesLoading] =
-    useState(true);
+  const [code, setCode] = useState("");
+  const [output, setOutput] = useState("");
 
-  const [error, setError] =
-    useState("");
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
 
-  const [code, setCode] =
-    useState("");
+  const isRemoteUpdate = useRef(false);
 
-  const [output, setOutput] =
-    useState("");
+  const [fileModal, setFileModal] = useState({
+    open: false,
+    mode: null,
+    parent: null,
+    file: null,
+    value: "",
+  });
 
-  const [isDirty, setIsDirty] =
-    useState(false);
-
-  const [isSaving, setIsSaving] =
-    useState(false);
-
-  const [isRunning, setIsRunning] =
-    useState(false);
-
-  const isRemoteUpdate =
-    useRef(false);
+  /* ------------------------------------------------------------------------ */
+  /* DERIVED STATE                                                            */
+  /* ------------------------------------------------------------------------ */
 
   const activeFile = useMemo(() => {
     return (
-      files.find(
-        (file) =>
-          file._id === activeFileId
-      ) || null
+      files.find((file) => file._id === activeFileId) || null
     );
   }, [files, activeFileId]);
 
@@ -304,244 +209,104 @@ const WorkspacePage = () => {
     return getDefaultFileName(workspace);
   }, [activeFile, workspace]);
 
-  /*
-   * Socket connection + workspace presence
-   */
+  /* ------------------------------------------------------------------------ */
+  /* SOCKET COLLABORATION                                                     */
+  /* ------------------------------------------------------------------------ */
+
   useEffect(() => {
-    if (!accessToken || !workspaceId) {
-      return;
-    }
+    if (!workspaceId || !accessToken) return;
 
     connectSocket(accessToken);
 
-    const handleConnect = () => {
-      console.log(
-        "Socket connected:",
-        socket.id
-      );
-
-      socket.emit(
-        "workspace:join",
-        {
-          workspaceId,
-        }
-      );
-    };
-
     const handleWorkspaceJoined = (data) => {
-      console.log(
-        "Joined workspace:",
-        data.workspaceId
-      );
-
-      console.log(
-        "Workspace role:",
-        data.role
-      );
-
-      console.log(
-        "Existing collaborators:",
-        data.users
-      );
-
-      setCollaborators(
-        data.users || []
-      );
+      setCollaborators(data.users || []);
     };
 
-    const handleWorkspaceError = (data) => {
-      console.error(
-        "Workspace socket error:",
-        data?.message
-      );
-    };
-
-    const handleUserJoined = (data) => {
-      if (!data?.userId) {
-        return;
-      }
-
-      console.log(
-        "User joined workspace:",
-        data
-      );
-
+    const handleUserJoined = (user) => {
       setCollaborators((current) => {
-        const alreadyExists =
-          current.some(
-            (collaborator) =>
-              collaborator.userId ===
-              data.userId
-          );
+        const exists = current.some(
+          (item) => item.userId === user.userId
+        );
 
-        if (alreadyExists) {
-          return current.map(
-            (collaborator) =>
-              collaborator.userId ===
-              data.userId
-                ? data
-                : collaborator
+        if (exists) {
+          return current.map((item) =>
+            item.userId === user.userId
+              ? {
+                  ...item,
+                  ...user,
+                }
+              : item
           );
         }
 
-        return [
-          ...current,
-          data,
-        ];
+        return [...current, user];
       });
     };
 
-    const handleUserLeft = (data) => {
-      if (!data?.userId) {
-        return;
-      }
-
-      console.log(
-        "User left workspace:",
-        data.userId
-      );
-
+    const handleUserLeft = ({ userId }) => {
       setCollaborators((current) =>
         current.filter(
-          (collaborator) =>
-            collaborator.userId !==
-            data.userId
+          (collaborator) => collaborator.userId !== userId
         )
       );
     };
 
-    const handleUserFileChanged = (data) => {
-      if (!data?.userId) {
-        return;
-      }
-
-      console.log(
-        "Collaborator changed file:",
-        data
-      );
-
+    const handleUserFileChanged = ({
+      userId,
+      activeFileId: remoteFileId,
+    }) => {
       setCollaborators((current) =>
-        current.map(
-          (collaborator) =>
-            collaborator.userId ===
-            data.userId
-              ? {
-                  ...collaborator,
-                  activeFileId:
-                    data.fileId ||
-                    null,
-                }
-              : collaborator
+        current.map((collaborator) =>
+          collaborator.userId === userId
+            ? {
+                ...collaborator,
+                activeFileId: remoteFileId,
+              }
+            : collaborator
         )
       );
     };
 
-    socket.on(
-      "connect",
-      handleConnect
-    );
-
-    socket.on(
-      "workspace:joined",
-      handleWorkspaceJoined
-    );
-
-    socket.on(
-      "workspace:error",
-      handleWorkspaceError
-    );
-
-    socket.on(
-      "workspace:user-joined",
-      handleUserJoined
-    );
-
-    socket.on(
-      "workspace:user-left",
-      handleUserLeft
-    );
-
+    socket.on("workspace:joined", handleWorkspaceJoined);
+    socket.on("workspace:user-joined", handleUserJoined);
+    socket.on("workspace:user-left", handleUserLeft);
     socket.on(
       "workspace:user-file-changed",
       handleUserFileChanged
     );
 
-    if (socket.connected) {
-      handleConnect();
-    }
+    socket.emit("workspace:join", {
+      workspaceId,
+    });
 
     return () => {
-      socket.emit(
-        "workspace:leave",
-        {
-          workspaceId,
-        }
-      );
+      socket.emit("workspace:leave", {
+        workspaceId,
+      });
 
-      socket.off(
-        "connect",
-        handleConnect
-      );
-
-      socket.off(
-        "workspace:joined",
-        handleWorkspaceJoined
-      );
-
-      socket.off(
-        "workspace:error",
-        handleWorkspaceError
-      );
-
-      socket.off(
-        "workspace:user-joined",
-        handleUserJoined
-      );
-
-      socket.off(
-        "workspace:user-left",
-        handleUserLeft
-      );
-
+      socket.off("workspace:joined", handleWorkspaceJoined);
+      socket.off("workspace:user-joined", handleUserJoined);
+      socket.off("workspace:user-left", handleUserLeft);
       socket.off(
         "workspace:user-file-changed",
         handleUserFileChanged
       );
 
       disconnectSocket();
-
-      setCollaborators([]);
     };
-  }, [accessToken, workspaceId]);
+  }, [workspaceId, accessToken]);
 
-  /*
-   * Receive remote file changes
-   */
+  /* ------------------------------------------------------------------------ */
+  /* REMOTE FILE EVENTS                                                       */
+  /* ------------------------------------------------------------------------ */
+
   useEffect(() => {
-    if (!workspaceId) {
-      return;
-    }
-
-    const handleFileChanged = (data) => {
-      const {
-        fileId,
-        content,
-        userId,
-      } = data;
-
-      if (!fileId) {
-        return;
-      }
-
-      console.log(
-        "Received file change:",
-        fileId,
-        "from user:",
-        userId
-      );
-
-      setFiles((currentFiles) =>
-        currentFiles.map((file) =>
+    const handleRemoteFileChange = ({
+      fileId,
+      content,
+    }) => {
+      setFiles((current) =>
+        current.map((file) =>
           file._id === fileId
             ? {
                 ...file,
@@ -553,457 +318,198 @@ const WorkspacePage = () => {
 
       if (fileId === activeFileId) {
         isRemoteUpdate.current = true;
-
-        setCode(content);
+        setCode(content || "");
         setIsDirty(false);
       }
     };
 
-    const handleFileCreated = (data) => {
-      if (
-        !data?.file ||
-        data.workspaceId?.toString() !==
-          workspaceId.toString()
-      ) {
-        return;
-      }
+    const handleRemoteFileCreated = (file) => {
+      setFiles((current) => {
+        const exists = current.some(
+          (item) => item._id === file._id
+        );
 
-      console.log(
-        "Remote file created:",
-        data.file
-      );
+        if (exists) return current;
 
-      setFiles((currentFiles) => {
-        const exists =
-          currentFiles.some(
-            (file) =>
-              file._id ===
-              data.file._id
-          );
-
-        if (exists) {
-          return currentFiles;
-        }
-
-        return [
-          ...currentFiles,
-          data.file,
-        ];
+        return [...current, file];
       });
     };
 
-    const handleFileUpdated = async (
-      data
-    ) => {
-      if (
-        !data?.file ||
-        data.workspaceId?.toString() !==
-          workspaceId.toString()
-      ) {
-        return;
-      }
-
-      console.log(
-        "Remote file updated:",
-        data.file
-      );
-
-      /*
-       * Folder rename changes the paths of
-       * all children in the database.
-       *
-       * The socket event contains only the
-       * renamed folder, so refresh the full
-       * tree to keep every child path correct.
-       */
-      if (
-        data.file.type ===
-        "folder"
-      ) {
-        try {
-          const latestFiles =
-            await getWorkspaceFiles(
-              workspaceId
-            );
-
-          setFiles(latestFiles);
-
-          if (
-            activeFileId ===
-            data.file._id
-          ) {
-            const latestFolder =
-              latestFiles.find(
-                (file) =>
-                  file._id ===
-                  data.file._id
-              );
-
-            if (!latestFolder) {
-              setActiveFileId(null);
-              setCode("");
-              setIsDirty(false);
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Failed to refresh files after folder update:",
-            error
-          );
-        }
-
-        return;
-      }
-
-      setFiles((currentFiles) =>
-        currentFiles.map((file) =>
-          file._id ===
-          data.file._id
-            ? data.file
-            : file
+    const handleRemoteFileUpdated = (file) => {
+      setFiles((current) =>
+        current.map((item) =>
+          item._id === file._id
+            ? file
+            : item
         )
       );
 
       if (
-        activeFileId ===
-        data.file._id &&
-        typeof data.file.content ===
-          "string"
+        file.type === "folder" ||
+        file.path !==
+          files.find((item) => item._id === file._id)?.path
       ) {
-        isRemoteUpdate.current =
-          true;
+        getWorkspaceFiles(workspaceId)
+          .then((updatedFiles) => {
+            setFiles(updatedFiles);
+          })
+          .catch(() => {});
+      }
 
-        setCode(
-          data.file.content
-        );
+      if (file._id === activeFileId) {
+        setCode(file.content || "");
+      }
+    };
 
+    const handleRemoteFileDeleted = ({
+      fileId,
+      fileIds,
+    }) => {
+      const idsToDelete = fileIds || [fileId];
+
+      setFiles((current) =>
+        current.filter(
+          (file) => !idsToDelete.includes(file._id)
+        )
+      );
+
+      if (idsToDelete.includes(activeFileId)) {
+        setActiveFileId(null);
+        setCode("");
         setIsDirty(false);
+        setOutput("");
       }
     };
 
-    const handleFileDeleted = (
-      data
-    ) => {
-      if (
-        !data?.fileId ||
-        data.workspaceId?.toString() !==
-          workspaceId.toString()
-      ) {
-        return;
-      }
-
-      console.log(
-        "Remote file deleted:",
-        data.fileId
-      );
-
-      setFiles((currentFiles) => {
-        const deletedFile =
-          currentFiles.find(
-            (file) =>
-              file._id ===
-              data.fileId
-          );
-
-        if (!deletedFile) {
-          return currentFiles;
-        }
-
-        const deletedPath =
-          deletedFile.path;
-
-        return currentFiles.filter(
-          (file) => {
-            if (
-              file._id ===
-              data.fileId
-            ) {
-              return false;
-            }
-
-            if (
-              deletedFile.type ===
-              "folder"
-            ) {
-              return !file.path.startsWith(
-                `${deletedPath}/`
-              );
-            }
-
-            return true;
-          }
-        );
-      });
-
-      if (
-        activeFileId ===
-        data.fileId
-      ) {
-        setFiles((currentFiles) => {
-          const nextFile =
-            currentFiles.find(
-              (file) =>
-                file.type === "file" &&
-                file._id !==
-                  data.fileId
-            );
-
-          setActiveFileId(
-            nextFile?._id ||
-              null
-          );
-
-          setCode(
-            nextFile?.content ||
-              ""
-          );
-
-          setIsDirty(false);
-          setOutput("");
-
-          return currentFiles;
-        });
-      }
-    };
-
-    const handleFileError = (
-      data
-    ) => {
-      console.error(
-        "File socket error:",
-        data?.message
-      );
-
+    const handleFileError = ({ message }) => {
+      setOutput(message || "File operation failed.");
       setIsSaving(false);
-
-      setOutput(
-        data?.message ||
-          "File operation failed."
-      );
     };
 
-    socket.on(
-      "file:changed",
-      handleFileChanged
-    );
-
+    socket.on("file:changed", handleRemoteFileChange);
     socket.on(
       "workspace:file-created",
-      handleFileCreated
+      handleRemoteFileCreated
     );
-
     socket.on(
       "workspace:file-updated",
-      handleFileUpdated
+      handleRemoteFileUpdated
     );
-
     socket.on(
       "workspace:file-deleted",
-      handleFileDeleted
+      handleRemoteFileDeleted
     );
-
-    socket.on(
-      "file:error",
-      handleFileError
-    );
+    socket.on("file:error", handleFileError);
 
     return () => {
-      socket.off(
-        "file:changed",
-        handleFileChanged
-      );
-
+      socket.off("file:changed", handleRemoteFileChange);
       socket.off(
         "workspace:file-created",
-        handleFileCreated
+        handleRemoteFileCreated
       );
-
       socket.off(
         "workspace:file-updated",
-        handleFileUpdated
+        handleRemoteFileUpdated
       );
-
       socket.off(
         "workspace:file-deleted",
-        handleFileDeleted
+        handleRemoteFileDeleted
       );
-
-      socket.off(
-        "file:error",
-        handleFileError
-      );
+      socket.off("file:error", handleFileError);
     };
-  }, [
-    workspaceId,
-    activeFileId,
-  ]);
+  }, [workspaceId, activeFileId, files]);
 
-  /*
-   * Fetch workspace + files
-   */
+  /* ------------------------------------------------------------------------ */
+  /* LOAD WORKSPACE                                                           */
+  /* ------------------------------------------------------------------------ */
+
   useEffect(() => {
-    const fetchWorkspace = async () => {
+    const loadWorkspace = async () => {
+      if (!workspaceId) return;
+
       try {
         setLoading(true);
         setFilesLoading(true);
         setError("");
 
-        const workspaceResponse =
-          await api.get(
-            `/api/workspaces/${workspaceId}`
-          );
+        const workspaceResponse = await api.get(
+          `/api/workspaces/${workspaceId}`
+        );
 
-        const fetchedWorkspace =
+        const loadedWorkspace =
           workspaceResponse.data.workspace;
 
-        setWorkspace(
-          fetchedWorkspace
-        );
+        setWorkspace(loadedWorkspace);
 
         try {
-          const openedResponse =
-            await api.patch(
-              `/api/workspaces/${workspaceId}/opened`
-            );
-
-          if (
-            openedResponse.data
-              .workspace
-          ) {
-            setWorkspace(
-              openedResponse.data
-                .workspace
-            );
-          }
-        } catch (
-          openedError
-        ) {
-          console.error(
-            "Failed to mark workspace as opened:",
-            openedError
+          await api.patch(
+            `/api/workspaces/${workspaceId}/opened`
           );
+        } catch {
+          // Opening a workspace should not block the editor.
         }
 
-        let fetchedFiles =
-          await getWorkspaceFiles(
-            workspaceId
-          );
-
-        if (
-          fetchedFiles.length === 0
-        ) {
-          try {
-            const defaultFileResponse =
-              await api.post(
-                `/api/workspaces/${workspaceId}/files`,
-                {
-                  name:
-                    getDefaultFileName(
-                      fetchedWorkspace
-                    ),
-
-                  language:
-                    getDefaultFileLanguage(
-                      fetchedWorkspace
-                    ),
-
-                  content:
-                    getDefaultFileContent(
-                      fetchedWorkspace
-                    ),
-
-                  type: "file",
-
-                  parent: null,
-                }
-              );
-
-            const createdFile =
-              defaultFileResponse
-                .data.file;
-
-            fetchedFiles = [
-              createdFile,
-            ];
-
-            /*
-             * Notify collaborators if
-             * the default file was created.
-             */
-            if (socket.connected) {
-              socket.emit(
-                "file:created",
-                {
-                  workspaceId,
-                  fileId:
-                    createdFile._id,
-                }
-              );
-            }
-          } catch (
-            createError
-          ) {
-            /*
-             * Another collaborator may have
-             * created the default file at the
-             * same time.
-             *
-             * Refresh once before failing.
-             */
-            console.error(
-              "Default file creation failed:",
-              createError
-            );
-
-            fetchedFiles =
-              await getWorkspaceFiles(
-                workspaceId
-              );
-          }
-        }
-
-        setFiles(
-          fetchedFiles
+        let loadedFiles = await getWorkspaceFiles(
+          workspaceId
         );
 
-        const firstFile =
-          fetchedFiles.find(
-            (file) =>
-              file.type === "file"
-          );
+        if (!loadedFiles || loadedFiles.length === 0) {
+          const defaultFileName =
+            getDefaultFileName(loadedWorkspace);
 
-        if (firstFile) {
-          setActiveFileId(
-            firstFile._id
-          );
+          const defaultFile =
+            await createWorkspaceFile({
+              workspaceId,
+              fileData: {
+                name: defaultFileName,
+                path: `/${defaultFileName}`,
+                type: "file",
+                language:
+                  getLanguageFromFileName(
+                    defaultFileName
+                  ),
+                content: "",
+                parent: null,
+              },
+            });
 
-          setCode(
-            firstFile.content || ""
-          );
+          loadedFiles = [defaultFile];
 
           if (socket.connected) {
-            socket.emit(
-              "file:open",
-              {
-                workspaceId,
-                fileId:
-                  firstFile._id,
-              }
-            );
+            socket.emit("file:created", {
+              workspaceId,
+              file: defaultFile,
+            });
           }
         }
 
-        setIsDirty(false);
-      } catch (error) {
+        setFiles(loadedFiles);
+
+        const firstFile =
+          loadedFiles.find(
+            (file) => file.type === "file"
+          ) || null;
+
+        if (firstFile) {
+          setActiveFileId(firstFile._id);
+          setCode(firstFile.content || "");
+
+          if (socket.connected) {
+            socket.emit("file:open", {
+              workspaceId,
+              fileId: firstFile._id,
+            });
+          }
+        }
+      } catch (err) {
         console.error(
-          "Failed to fetch workspace:",
-          error
+          "Failed to load workspace:",
+          err
         );
 
         setError(
-          error.response?.data
-            ?.message ||
-            "Failed to load workspace"
+          err.response?.data?.message ||
+            "Failed to load workspace."
         );
       } finally {
         setLoading(false);
@@ -1011,536 +517,355 @@ const WorkspacePage = () => {
       }
     };
 
-    if (workspaceId) {
-      fetchWorkspace();
-    }
+    loadWorkspace();
   }, [workspaceId]);
 
-  /*
-   * File selection
-   */
-  const handleFileSelect = (
-    file
-  ) => {
-    if (
-      !file ||
-      file.type === "folder"
-    ) {
+  /* ------------------------------------------------------------------------ */
+  /* FILE SELECT                                                              */
+  /* ------------------------------------------------------------------------ */
+
+  const handleFileSelect = (fileId) => {
+    const file = files.find(
+      (item) => item._id === fileId
+    );
+
+    if (!file || file.type === "folder") {
       return;
     }
 
-    if (
-      file._id === activeFileId
-    ) {
+    if (file._id === activeFileId) {
       return;
     }
 
     if (isDirty) {
-      const shouldSwitch =
-        window.confirm(
-          "You have unsaved changes. Switch files anyway?"
-        );
+      const shouldSwitch = window.confirm(
+        "You have unsaved changes. Switch files anyway?"
+      );
 
       if (!shouldSwitch) {
         return;
       }
     }
 
-    isRemoteUpdate.current =
-      false;
+    isRemoteUpdate.current = false;
 
-    setActiveFileId(
-      file._id
-    );
-
-    setCode(
-      file.content || ""
-    );
-
+    setActiveFileId(file._id);
+    setCode(file.content || "");
     setIsDirty(false);
     setOutput("");
 
     if (socket.connected) {
-      socket.emit(
-        "file:open",
-        {
-          workspaceId,
-          fileId: file._id,
-        }
-      );
+      socket.emit("file:open", {
+        workspaceId,
+        fileId: file._id,
+      });
     }
   };
 
-  /*
-   * Build file path
-   */
-  const getFilePath = (
-    name,
-    parentId
-  ) => {
-    if (!parentId) {
-      return name;
-    }
+  /* ------------------------------------------------------------------------ */
+  /* FILE MODAL                                                               */
+  /* ------------------------------------------------------------------------ */
 
-    const parent =
-      files.find(
-        (file) =>
-          file._id ===
-          parentId
-      );
-
-    if (!parent) {
-      return name;
-    }
-
-    return `${parent.path}/${name}`;
+  const openCreateFileModal = (parent = null) => {
+    setFileModal({
+      open: true,
+      mode: "file",
+      parent,
+      file: null,
+      value: "",
+    });
   };
 
-  /*
-   * Create file
-   */
-  const handleCreateFile = async (
-    parent = null
-  ) => {
-    const name =
-      window.prompt(
-        "File name"
-      );
+  const openCreateFolderModal = (parent = null) => {
+    setFileModal({
+      open: true,
+      mode: "folder",
+      parent,
+      file: null,
+      value: "",
+    });
+  };
 
-    if (
-      !name ||
-      !name.trim()
-    ) {
-      return;
-    }
+  const openRenameModal = (file) => {
+    setFileModal({
+      open: true,
+      mode: "rename",
+      parent: null,
+      file,
+      value: file.name,
+    });
+  };
 
-    const trimmedName =
-      name.trim();
+  const closeFileModal = () => {
+    setFileModal({
+      open: false,
+      mode: null,
+      parent: null,
+      file: null,
+      value: "",
+    });
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* CREATE FILE / FOLDER                                                     */
+  /* ------------------------------------------------------------------------ */
+
+  const handleCreateFile = async () => {
+    const name = fileModal.value.trim();
+
+    if (!name) return;
 
     try {
-      const newFile =
-        await createWorkspaceFile({
-          workspaceId,
+      const type = fileModal.mode;
 
-          fileData: {
-            name: trimmedName,
-
-            path: getFilePath(
-              trimmedName,
-              parent?._id ||
-                null
-            ),
-
-            type: "file",
-
-            language:
-              getLanguageFromFileName(
-                trimmedName
-              ),
-
-            content: "",
-
-            parent:
-              parent?._id ||
-              null,
-          },
-        });
-
-      setFiles((current) => {
-        const exists =
-          current.some(
-            (file) =>
-              file._id ===
-              newFile._id
-          );
-
-        if (exists) {
-          return current;
-        }
-
-        return [
-          ...current,
-          newFile,
-        ];
+      const file = await createWorkspaceFile({
+        workspaceId,
+        fileData: {
+          name,
+          path: getFilePath(
+            name,
+            fileModal.parent,
+            files
+          ),
+          type,
+          parent: fileModal.parent || null,
+          language:
+            type === "file"
+              ? getLanguageFromFileName(name)
+              : null,
+          content: type === "file" ? "" : "",
+        },
       });
 
-      setActiveFileId(
-        newFile._id
-      );
-
-      setCode(
-        newFile.content || ""
-      );
-
-      setOutput("");
-      setIsDirty(false);
+      setFiles((current) => [
+        ...current,
+        file,
+      ]);
 
       if (socket.connected) {
-        socket.emit(
-          "file:created",
-          {
-            workspaceId,
-            fileId:
-              newFile._id,
-          }
-        );
-
-        socket.emit(
-          "file:open",
-          {
-            workspaceId,
-            fileId:
-              newFile._id,
-          }
-        );
+        socket.emit("file:created", {
+          workspaceId,
+          file,
+        });
       }
-    } catch (error) {
+
+      closeFileModal();
+
+      if (type === "file") {
+        setActiveFileId(file._id);
+        setCode("");
+        setIsDirty(false);
+        setOutput("");
+
+        socket.emit("file:open", {
+          workspaceId,
+          fileId: file._id,
+        });
+      }
+    } catch (err) {
       console.error(
         "Failed to create file:",
-        error
+        err
       );
 
-      window.alert(
-        error.response?.data
-          ?.message ||
-          "Failed to create file"
+      setOutput(
+        err.response?.data?.message ||
+          "Failed to create file."
       );
     }
   };
 
-  /*
-   * Create folder
-   */
-  const handleCreateFolder =
-    async (
-      parent = null
-    ) => {
-      const name =
-        window.prompt(
-          "Folder name"
-        );
+  /* ------------------------------------------------------------------------ */
+  /* RENAME                                                                   */
+  /* ------------------------------------------------------------------------ */
 
-      if (
-        !name ||
-        !name.trim()
-      ) {
-        return;
-      }
+  const handleRename = async () => {
+    const name = fileModal.value.trim();
 
-      const trimmedName =
-        name.trim();
-
-      try {
-        const newFolder =
-          await createWorkspaceFile({
-            workspaceId,
-
-            fileData: {
-              name: trimmedName,
-
-              path: getFilePath(
-                trimmedName,
-                parent?._id ||
-                  null
-              ),
-
-              type: "folder",
-
-              language: null,
-
-              content: "",
-
-              parent:
-                parent?._id ||
-                null,
-            },
-          });
-
-        setFiles((current) => {
-          const exists =
-            current.some(
-              (file) =>
-                file._id ===
-                newFolder._id
-            );
-
-          if (exists) {
-            return current;
-          }
-
-          return [
-            ...current,
-            newFolder,
-          ];
-        });
-
-        if (socket.connected) {
-          socket.emit(
-            "file:created",
-            {
-              workspaceId,
-              fileId:
-                newFolder._id,
-            }
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Failed to create folder:",
-          error
-        );
-
-        window.alert(
-          error.response?.data
-            ?.message ||
-            "Failed to create folder"
-        );
-      }
-    };
-
-  /*
-   * Rename file / folder
-   */
-  const handleRename = async (
-    file
-  ) => {
-    const name =
-      window.prompt(
-        "New name",
-        file.name
-      );
-
-    if (
-      !name ||
-      !name.trim()
-    ) {
-      return;
-    }
-
-    const trimmedName =
-      name.trim();
-
-    if (
-      trimmedName ===
-      file.name
-    ) {
-      return;
-    }
+    if (!name || !fileModal.file) return;
 
     try {
+      const file = fileModal.file;
+
+      const oldPath = file.path;
+
+      const parentPath = file.parent
+        ? files.find(
+            (item) =>
+              item._id === file.parent
+          )?.path || ""
+        : "";
+
+      const newPath = parentPath
+        ? `${parentPath}/${name}`
+        : `/${name}`;
+
       const updatedFile =
         await updateWorkspaceFile({
           workspaceId,
           fileId: file._id,
-
           fileData: {
-            name: trimmedName,
+            name,
+            path: newPath,
           },
         });
 
-      setFiles((current) =>
-        current.map((item) => {
-          if (
-            item._id ===
-            updatedFile._id
-          ) {
-            return updatedFile;
-          }
-
-          if (
-            file.type === "folder" &&
-            item.path.startsWith(
-              `${file.path}/`
-            )
-          ) {
-            return {
-              ...item,
-
-              path:
-                updatedFile.path +
-                item.path.substring(
-                  file.path.length
-                ),
-            };
-          }
-
-          return item;
-        })
+      let updatedFiles = files.map(
+        (item) =>
+          item._id === updatedFile._id
+            ? updatedFile
+            : item
       );
 
-      if (socket.connected) {
-        socket.emit(
-          "file:updated",
-          {
-            workspaceId,
-            fileId:
-              file._id,
+      if (file.type === "folder") {
+        const oldPrefix =
+          oldPath.endsWith("/")
+            ? oldPath
+            : `${oldPath}/`;
+
+        const newPrefix =
+          newPath.endsWith("/")
+            ? newPath
+            : `${newPath}/`;
+
+        updatedFiles = updatedFiles.map(
+          (item) => {
+            if (
+              item.path.startsWith(oldPrefix)
+            ) {
+              return {
+                ...item,
+                path:
+                  newPrefix +
+                  item.path.slice(
+                    oldPrefix.length
+                  ),
+              };
+            }
+
+            return item;
           }
         );
+
+        try {
+          updatedFiles =
+            await getWorkspaceFiles(
+              workspaceId
+            );
+        } catch {
+          // Keep optimistic state if refresh fails.
+        }
       }
-    } catch (error) {
+
+      setFiles(updatedFiles);
+
+      if (socket.connected) {
+        socket.emit("file:updated", {
+          workspaceId,
+          file: updatedFile,
+        });
+      }
+
+      closeFileModal();
+    } catch (err) {
       console.error(
-        "Failed to rename:",
-        error
+        "Failed to rename file:",
+        err
       );
 
-      window.alert(
-        error.response?.data
-          ?.message ||
-          "Failed to rename"
+      setOutput(
+        err.response?.data?.message ||
+          "Failed to rename file."
       );
     }
   };
 
-  /*
-   * Delete file / folder
-   */
-  const handleDelete = async (
-    file
-  ) => {
+  /* ------------------------------------------------------------------------ */
+  /* DELETE                                                                   */
+  /* ------------------------------------------------------------------------ */
+
+  const handleDelete = async (file) => {
     const message =
       file.type === "folder"
         ? `Delete folder "${file.name}" and everything inside it?`
         : `Delete "${file.name}"?`;
 
-    const confirmed =
-      window.confirm(message);
+    const confirmed = window.confirm(message);
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      await deleteWorkspaceFile({
-        workspaceId,
-        fileId: file._id,
-      });
+      const result =
+        await deleteWorkspaceFile({
+          workspaceId,
+          fileId: file._id,
+        });
 
-      const deletedPath =
-        file.path;
+      const deletedIds =
+        result.deletedFileIds || [file._id];
 
-      const activeFileWasDeleted =
-        activeFileId ===
-          file._id ||
-        (
-          file.type ===
-            "folder" &&
-          activeFileId &&
-          files
-            .find(
-              (item) =>
-                item._id ===
-                activeFileId
-            )
-            ?.path.startsWith(
-              `${deletedPath}/`
-            )
-        );
-
-      const remainingFiles =
-        files.filter(
-          (item) => {
-            if (
-              item._id ===
-              file._id
-            ) {
-              return false;
-            }
-
-            if (
-              file.type ===
-              "folder"
-            ) {
-              return !item.path.startsWith(
-                `${deletedPath}/`
-              );
-            }
-
-            return true;
-          }
-        );
-
-      setFiles(
-        remainingFiles
+      setFiles((current) =>
+        current.filter(
+          (item) =>
+            !deletedIds.includes(item._id)
+        )
       );
 
-      if (activeFileWasDeleted) {
+      if (deletedIds.includes(activeFileId)) {
         const nextFile =
-          remainingFiles.find(
+          files.find(
             (item) =>
-              item.type ===
-              "file"
-          );
+              item.type === "file" &&
+              !deletedIds.includes(item._id)
+          ) || null;
 
-        setActiveFileId(
-          nextFile?._id ||
-            null
-        );
+        if (nextFile) {
+          setActiveFileId(nextFile._id);
+          setCode(nextFile.content || "");
 
-        setCode(
-          nextFile?.content ||
-            ""
-        );
+          socket.emit("file:open", {
+            workspaceId,
+            fileId: nextFile._id,
+          });
+        } else {
+          setActiveFileId(null);
+          setCode("");
+        }
 
         setIsDirty(false);
         setOutput("");
-
-        if (
-          nextFile &&
-          socket.connected
-        ) {
-          socket.emit(
-            "file:open",
-            {
-              workspaceId,
-              fileId:
-                nextFile._id,
-            }
-          );
-        }
       }
 
       if (socket.connected) {
-        socket.emit(
-          "file:deleted",
-          {
-            workspaceId,
-            fileId:
-              file._id,
-          }
-        );
+        socket.emit("file:deleted", {
+          workspaceId,
+          fileId: file._id,
+          fileIds: deletedIds,
+        });
       }
-    } catch (error) {
+    } catch (err) {
       console.error(
-        "Failed to delete:",
-        error
+        "Failed to delete file:",
+        err
       );
 
-      window.alert(
-        error.response?.data
-          ?.message ||
-          "Failed to delete"
+      setOutput(
+        err.response?.data?.message ||
+          "Failed to delete file."
       );
     }
   };
 
-  /*
-   * Editor changes
-   */
-  const handleEditorChange = (
-    value
-  ) => {
-    const newContent =
-      value ?? "";
+  /* ------------------------------------------------------------------------ */
+  /* EDITOR                                                                    */
+  /* ------------------------------------------------------------------------ */
 
-    if (
-      isRemoteUpdate.current
-    ) {
-      isRemoteUpdate.current =
-        false;
+  const handleEditorChange = (value) => {
+    const newContent = value ?? "";
 
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
       setCode(newContent);
-
       return;
     }
 
@@ -1556,94 +881,63 @@ const WorkspacePage = () => {
       return;
     }
 
-    socket.emit(
-      "file:change",
-      {
-        workspaceId,
-        fileId:
-          activeFileId,
-        content:
-          newContent,
-      }
-    );
+    socket.emit("file:change", {
+      workspaceId,
+      fileId: activeFileId,
+      content: newContent,
+    });
   };
 
-  /*
-   * Manual save
-   *
-   * The current backend does not expose
-   * a file:save Socket.IO event.
-   *
-   * Therefore manual Save uses the existing
-   * REST file update endpoint.
-   */
+  /* ------------------------------------------------------------------------ */
+  /* SAVE                                                                      */
+  /* ------------------------------------------------------------------------ */
+
   const handleSave = async () => {
-    if (
-      !activeFile ||
-      isSaving
-    ) {
+    if (!activeFileId || !activeFile) {
+      return;
+    }
+
+    if (activeFile.type !== "file") {
       return;
     }
 
     try {
       setIsSaving(true);
-      setOutput("");
 
       const updatedFile =
         await updateWorkspaceFile({
           workspaceId,
-          fileId:
-            activeFile._id,
-
+          fileId: activeFileId,
           fileData: {
             content: code,
           },
         });
 
-      setFiles((currentFiles) =>
-        currentFiles.map(
-          (file) =>
-            file._id ===
-            updatedFile._id
-              ? updatedFile
-              : file
+      setFiles((current) =>
+        current.map((file) =>
+          file._id === updatedFile._id
+            ? updatedFile
+            : file
         )
       );
 
-      setCode(
-        updatedFile.content ||
-          ""
-      );
-
+      setCode(updatedFile.content || "");
       setIsDirty(false);
 
-      /*
-       * REST save is not automatically
-       * broadcast to collaborators by
-       * the current backend controller.
-       *
-       * Broadcast the update through the
-       * existing socket event.
-       */
       if (socket.connected) {
-        socket.emit(
-          "file:updated",
-          {
-            workspaceId,
-            fileId:
-              updatedFile._id,
-          }
-        );
+        socket.emit("file:updated", {
+          workspaceId,
+          file: updatedFile,
+        });
       }
-    } catch (error) {
+    } catch (err) {
       console.error(
         "Failed to save file:",
-        error
+        err
       );
 
       setOutput(
-        error.response?.data
-          ?.message ||
+        err.response?.data?.message ||
           "Failed to save file."
       );
     } finally {
@@ -1651,14 +945,39 @@ const WorkspacePage = () => {
     }
   };
 
-  /*
-   * Run code
-   */
+  /* ------------------------------------------------------------------------ */
+  /* RUN                                                                       */
+  /* ------------------------------------------------------------------------ */
+
   const handleRun = async () => {
-    if (
-      !activeFile ||
-      isRunning
-    ) {
+    if (!activeFile || activeFile.type !== "file") {
+      setOutput("Select a file to run.");
+      return;
+    }
+
+    const extension =
+      activeFile.name
+        .split(".")
+        .pop()
+        ?.toLowerCase();
+
+    const executionLanguages = {
+      js: "javascript",
+      mjs: "javascript",
+      cjs: "javascript",
+      py: "python",
+      cpp: "cpp",
+      cc: "cpp",
+      cxx: "cpp",
+    };
+
+    const executionLanguage =
+      executionLanguages[extension];
+
+    if (!executionLanguage) {
+      setOutput(
+        `Running "${activeFile.name}" is not supported yet.\n\nSupported files:\n• JavaScript (.js)\n• Python (.py)\n• C++ (.cpp)`
+      );
       return;
     }
 
@@ -1666,879 +985,598 @@ const WorkspacePage = () => {
       setIsRunning(true);
 
       setOutput(
-        "Running code...\n"
+        `Running ${activeFile.name}...\n`
       );
 
-      const response =
-        await api.post(
-          "/api/execution/run",
-          {
-            language:
-              editorLanguage,
-
-            code,
-
-            stdin: "",
-          }
-        );
-
-      const result =
-        response.data.result;
-
-      let executionOutput =
-        "";
-
-      if (result?.stdout) {
-        executionOutput +=
-          result.stdout;
-      }
-
-      if (result?.stderr) {
-        if (executionOutput) {
-          executionOutput +=
-            "\n";
+      const response = await api.post(
+        "/api/execution/run",
+        {
+          language: executionLanguage,
+          code,
+          stdin: "",
         }
+      );
 
-        executionOutput +=
-          result.stderr;
+      const result = response.data.result;
+
+      const outputParts = [];
+
+      if (result.compileError) {
+        outputParts.push(
+          `COMPILE ERROR\n\n${result.compileError}`
+        );
       }
 
-      if (!executionOutput) {
-        executionOutput =
-          result?.output ||
-          "Program finished with no output.";
+      if (result.compileOutput) {
+        outputParts.push(
+          `COMPILE OUTPUT\n\n${result.compileOutput}`
+        );
+      }
+
+      if (result.stdout) {
+        outputParts.push(
+          `OUTPUT\n\n${result.stdout}`
+        );
+      }
+
+      if (result.stderr) {
+        outputParts.push(
+          `ERROR\n\n${result.stderr}`
+        );
       }
 
       if (
-        result?.exitCode !==
-          null &&
-        result?.exitCode !==
-          undefined &&
-        result.exitCode !== 0
+        !result.stdout &&
+        !result.stderr &&
+        !result.compileError &&
+        !result.compileOutput &&
+        result.output
       ) {
-        executionOutput +=
-          `\n\nProcess exited with code: ${result.exitCode}`;
+        outputParts.push(result.output);
+      }
+
+      if (result.exitCode !== null) {
+        outputParts.push(
+          `\nProcess exited with code ${result.exitCode}`
+        );
+      }
+
+      if (result.signal) {
+        outputParts.push(
+          `\nProcess terminated by signal: ${result.signal}`
+        );
       }
 
       setOutput(
-        executionOutput
+        outputParts.length
+          ? outputParts.join("\n\n")
+          : "Program finished with no output."
       );
-    } catch (error) {
+    } catch (err) {
       console.error(
         "Code execution failed:",
-        error
+        err
       );
 
-      const serverMessage =
-        error.response?.data
-          ?.error ||
-        error.response?.data
-          ?.message;
-
       setOutput(
-        serverMessage ||
-          "Code execution failed. Please try again."
+        err.response?.data?.message ||
+          "Code execution failed."
       );
     } finally {
       setIsRunning(false);
     }
   };
 
-  const handleBack = () => {
-    navigate("/recent");
-  };
+  /* ------------------------------------------------------------------------ */
+  /* KEYBOARD SHORTCUT                                                        */
+  /* ------------------------------------------------------------------------ */
 
-  /*
-   * Loading state
-   */
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "s"
+      ) {
+        event.preventDefault();
+        handleSave();
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "Enter"
+      ) {
+        event.preventDefault();
+        handleRun();
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  });
+
+  /* ------------------------------------------------------------------------ */
+  /* LOADING / ERROR                                                          */
+  /* ------------------------------------------------------------------------ */
+
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-[#0d0e10] text-zinc-500">
-        <div className="text-sm">
+      <div className="min-h-screen bg-[#0b0d0f] text-white flex items-center justify-center">
+        <div className="text-sm text-zinc-400">
           Loading workspace...
         </div>
       </div>
     );
   }
 
-  /*
-   * Error state
-   */
-  if (
-    error ||
-    !workspace
-  ) {
+  if (error || !workspace) {
     return (
-      <div className="flex h-full min-h-0 flex-col items-center justify-center bg-[#0d0e10] px-6 text-center">
-        <div className="mb-3 text-sm font-semibold text-zinc-300">
-          Workspace unavailable
+      <div className="min-h-screen bg-[#0b0d0f] text-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">
+            {error || "Workspace not found."}
+          </p>
+
+          <button
+            onClick={() => navigate("/workspaces")}
+            className="px-4 py-2 rounded-lg bg-[#dc9458] text-black font-medium hover:bg-[#e5a46c] transition"
+          >
+            Back to Workspaces
+          </button>
         </div>
-
-        <p className="mb-5 max-w-md text-xs leading-5 text-zinc-600">
-          {error ||
-            "This workspace could not be found."}
-        </p>
-
-        <button
-          type="button"
-          onClick={handleBack}
-          className="
-            flex items-center gap-2
-            rounded-lg
-            border border-white/[0.08]
-            bg-white/[0.03]
-            px-4 py-2
-            text-xs font-medium
-            text-zinc-400
-            transition
-            hover:bg-white/[0.06]
-            hover:text-zinc-200
-          "
-        >
-          <ArrowLeft size={14} />
-
-          Back to Recent
-        </button>
       </div>
     );
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* UI                                                                        */
+  /* ------------------------------------------------------------------------ */
+
   return (
-    <div
-      className="
-        relative
-        flex
-        h-[calc(100dvh-5rem)]
-        min-h-0
-        flex-col
-        overflow-hidden
-        bg-[#0d0e10]
-        text-zinc-200
-      "
-    >
-      <header
-        className="
-          flex
-          h-14
-          shrink-0
-          items-center
-          border-b border-white/[0.06]
-          bg-[#101113]
-          px-3
-        "
-      >
-        {/* Back */}
+    <div className="h-screen w-full overflow-hidden bg-[#0b0d0f] text-white flex flex-col">
+      {/* ------------------------------------------------------------------ */}
+      {/* HEADER                                                             */}
+      {/* ------------------------------------------------------------------ */}
 
-        <button
-          type="button"
-          onClick={handleBack}
-          title="Back"
-          className="
-            mr-3
-            flex h-8 w-8
-            items-center justify-center
-            rounded-md
-            text-zinc-600
-            transition
-            hover:bg-white/[0.05]
-            hover:text-zinc-200
-          "
-        >
-          <ArrowLeft size={16} />
-        </button>
-
-        {/* Workspace icon */}
-
-        <div
-          className="
-            mr-2
-            flex h-7 w-7
-            items-center justify-center
-            rounded-md
-            bg-[#dc9458]/10
-            text-[#dc9458]
-          "
-        >
-          <Folder size={14} />
-        </div>
-
-        {/* Workspace info */}
-
-        <div className="min-w-0">
-          <h1 className="truncate text-xs font-semibold text-zinc-200">
-            {workspace.name}
-          </h1>
-
-          <p className="text-[9px] text-zinc-600">
-            {workspace.language ||
-              "JavaScript"}
-          </p>
-        </div>
-
-        {/* Save state */}
-
-        <div className="mx-auto hidden items-center gap-2 md:flex">
-          <span
-            className={`
-              flex items-center gap-1.5
-              rounded-md
-              border
-              px-2.5 py-1
-              text-[9px]
-
-              ${
-                isSaving
-                  ? "border-blue-400/10 bg-blue-400/[0.04] text-blue-400/70"
-                  : isDirty
-                    ? "border-amber-400/10 bg-amber-400/[0.04] text-amber-400/70"
-                    : "border-emerald-400/10 bg-emerald-400/[0.04] text-emerald-400/70"
-              }
-            `}
-          >
-            <span
-              className={`
-                h-1.5 w-1.5 rounded-full
-
-                ${
-                  isSaving
-                    ? "bg-blue-400"
-                    : isDirty
-                      ? "bg-amber-400"
-                      : "bg-emerald-400"
-                }
-              `}
-            />
-
-            {isSaving
-              ? "Saving..."
-              : isDirty
-                ? "Unsaved"
-                : "Saved"}
-          </span>
-        </div>
-
-        {/* Actions */}
-
-        <div className="ml-auto flex items-center gap-1.5">
-          {/* Collaborators */}
-
+      <header className="h-14 shrink-0 border-b border-white/10 bg-[#101214] flex items-center justify-between px-4">
+        <div className="flex items-center gap-3 min-w-0">
           <button
-            type="button"
-            title="Collaborators"
             onClick={() =>
-              setShowCollaborators(
-                (current) =>
-                  !current
-              )
+              navigate("/workspaces")
             }
-            className={`
-              relative
-              flex h-8 w-8
-              items-center
-              justify-center
-              rounded-md
-              transition
-
-              ${
-                showCollaborators
-                  ? "bg-white/[0.06] text-zinc-200"
-                  : "text-zinc-600 hover:bg-white/[0.05] hover:text-zinc-300"
-              }
-            `}
+            className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
+            title="Back to workspaces"
           >
-            <Users size={15} />
-
-            {collaborators.length >
-              0 && (
-              <span
-                className="
-                  absolute
-                  -right-0.5
-                  -top-0.5
-                  flex
-                  h-3.5
-                  min-w-3.5
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-[#dc9458]
-                  px-1
-                  text-[8px]
-                  font-semibold
-                  text-[#17110d]
-                "
-              >
-                {collaborators.length}
-              </span>
-            )}
+            <ArrowLeft size={18} />
           </button>
 
-          {/* Save */}
+          <div className="h-5 w-px bg-white/10" />
 
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold truncate">
+              {workspace.name}
+            </h1>
+
+            <p className="text-[11px] text-zinc-500">
+              {editorLanguage}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* SAVE STATUS */}
+          <div className="hidden sm:flex items-center mr-2">
+            {isSaving ? (
+              <span className="text-xs text-zinc-500">
+                Saving...
+              </span>
+            ) : isDirty ? (
+              <span className="text-xs text-amber-400">
+                Unsaved changes
+              </span>
+            ) : (
+              <span className="text-xs text-emerald-400">
+                Saved
+              </span>
+            )}
+          </div>
+
+          {/* COLLABORATORS */}
+          <div className="relative">
+            <button
+              onClick={() =>
+                setShowCollaborators(
+                  (current) => !current
+                )
+              }
+              className={`h-9 px-3 rounded-lg flex items-center gap-2 border transition ${
+                showCollaborators
+                  ? "bg-[#dc9458]/10 border-[#dc9458]/30 text-[#dc9458]"
+                  : "border-white/10 text-zinc-400 hover:text-white hover:bg-white/5"
+              }`}
+              title="Collaborators"
+            >
+              <Users size={16} />
+
+              <span className="text-xs font-medium">
+                {collaborators.length}
+              </span>
+            </button>
+
+            {showCollaborators && (
+              <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#111416] shadow-2xl shadow-black/50">
+                {/* PANEL HEADER */}
+                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users
+                      size={16}
+                      className="text-[#dc9458]"
+                    />
+
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        Collaborators
+                      </p>
+
+                      <p className="text-[11px] text-zinc-500">
+                        {collaborators.length === 0
+                          ? "Just you"
+                          : `${collaborators.length} online`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setShowCollaborators(false)
+                    }
+                    className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* EMPTY STATE */}
+                {collaborators.length === 0 ? (
+                  <div className="px-5 py-8 text-center">
+                    <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-white/5 flex items-center justify-center">
+                      <Users
+                        size={18}
+                        className="text-zinc-500"
+                      />
+                    </div>
+
+                    <p className="text-sm text-zinc-300">
+                      You’re working alone
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">
+                      Invite someone to this workspace
+                      to collaborate in real time.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto">
+                    {collaborators.map(
+                      (collaborator) => {
+                        const collaboratorFile =
+                          collaborator.activeFileId
+                            ? files.find(
+                                (file) =>
+                                  file._id ===
+                                  collaborator.activeFileId
+                              )
+                            : null;
+
+                        return (
+                          <div
+                            key={
+                              collaborator.userId
+                            }
+                            className="px-4 py-3 border-b border-white/5 last:border-b-0 hover:bg-white/[0.025] transition"
+                          >
+                            <div className="flex items-center gap-3">
+                              {/* AVATAR */}
+                              <div className="relative shrink-0">
+                                {collaborator.avatar ? (
+                                  <img
+                                    src={
+                                      collaborator.avatar
+                                    }
+                                    alt={
+                                      collaborator.username
+                                    }
+                                    className="h-9 w-9 rounded-full object-cover border border-white/10"
+                                  />
+                                ) : (
+                                  <div className="h-9 w-9 rounded-full bg-[#dc9458]/15 border border-[#dc9458]/20 flex items-center justify-center text-xs font-semibold text-[#dc9458]">
+                                    {getCollaboratorInitials(
+                                      collaborator.username
+                                    )}
+                                  </div>
+                                )}
+
+                                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-[#111416]" />
+                              </div>
+
+                              {/* USER INFO */}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className="text-sm text-zinc-200 truncate">
+                                    {
+                                      collaborator.username
+                                    }
+                                  </p>
+
+                                  {collaborator.role && (
+                                    <span className="shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500">
+                                      {
+                                        collaborator.role
+                                      }
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="mt-0.5 text-[11px] text-zinc-500 truncate">
+                                  {collaboratorFile
+                                    ? `Editing ${collaboratorFile.name}`
+                                    : "Online"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+
+                {/* PANEL FOOTER */}
+                <div className="px-4 py-2.5 bg-white/[0.02] border-t border-white/10">
+                  <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+
+                    Real-time collaboration is active
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SAVE */}
           <button
-            type="button"
             onClick={handleSave}
             disabled={
+              !activeFile ||
+              activeFile.type !== "file" ||
               !isDirty ||
               isSaving
             }
-            title="Save"
-            className="
-              hidden h-8
-              items-center
-              gap-2
-              rounded-md
-              border border-white/[0.07]
-              bg-white/[0.025]
-              px-3
-              text-[10px]
-              font-medium
-              text-zinc-500
-              transition
-              hover:bg-white/[0.05]
-              hover:text-zinc-200
-              disabled:cursor-not-allowed
-              disabled:opacity-40
-              sm:flex
-            "
+            className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition"
           >
-            <Save size={13} />
+            <Save size={15} />
 
-            {isSaving
-              ? "Saving"
-              : "Save"}
+            <span className="hidden sm:inline text-xs font-medium">
+              Save
+            </span>
           </button>
 
-          {/* Run */}
-
+          {/* RUN */}
           <button
-            type="button"
             onClick={handleRun}
-            disabled={isRunning}
-            className="
-              flex h-8
-              items-center
-              gap-2
-              rounded-md
-              bg-[#dc9458]
-              px-3
-              text-[10px]
-              font-semibold
-              text-[#17110d]
-              transition
-              hover:bg-[#e3a06b]
-              active:scale-[0.98]
-              disabled:cursor-not-allowed
-              disabled:opacity-60
-            "
+            disabled={
+              !activeFile ||
+              activeFile.type !== "file" ||
+              isRunning
+            }
+            className="h-9 px-3 rounded-lg bg-[#dc9458] text-black hover:bg-[#e5a46c] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition"
           >
             <Play
-              size={12}
+              size={15}
               fill="currentColor"
             />
 
-            {isRunning
-              ? "Running..."
-              : "Run"}
+            <span className="hidden sm:inline text-xs font-semibold">
+              {isRunning ? "Running..." : "Run"}
+            </span>
           </button>
 
-          {/* Settings */}
-
+          {/* SETTINGS */}
           <button
-            type="button"
+            className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
             title="Workspace settings"
-            className="
-              flex h-8 w-8
-              items-center
-              justify-center
-              rounded-md
-              text-zinc-600
-              transition
-              hover:bg-white/[0.05]
-              hover:text-zinc-300
-            "
           >
-            <Settings size={15} />
+            <Settings size={17} />
           </button>
         </div>
       </header>
 
-      {/* Collaborators panel */}
+      {/* ------------------------------------------------------------------ */}
+      {/* MAIN                                                               */}
+      {/* ------------------------------------------------------------------ */}
 
-      {showCollaborators && (
-        <div
-          className="
-            absolute
-            right-3
-            top-[4.5rem]
-            z-50
-            w-64
-            overflow-hidden
-            rounded-lg
-            border border-white/[0.08]
-            bg-[#111214]
-            shadow-2xl
-            shadow-black/40
-          "
-        >
-          <div
-            className="
-              flex
-              items-center
-              justify-between
-              border-b border-white/[0.06]
-              px-4
-              py-3
-            "
-          >
-            <div>
-              <div className="text-xs font-semibold text-zinc-200">
-                Collaborators
-              </div>
+      <div className="flex flex-1 min-h-0">
+        {/* ---------------------------------------------------------------- */}
+        {/* FILE EXPLORER                                                    */}
+        {/* ---------------------------------------------------------------- */}
 
-              <div className="mt-0.5 text-[9px] text-zinc-600">
-                {collaborators.length}{" "}
-                {collaborators.length ===
-                1
-                  ? "person"
-                  : "people"}{" "}
-                online
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setShowCollaborators(
-                  false
-                )
-              }
-              className="
-                flex h-6 w-6
-                items-center
-                justify-center
-                rounded
-                text-zinc-600
-                hover:bg-white/[0.05]
-                hover:text-zinc-300
-              "
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="max-h-72 overflow-y-auto p-2">
-            {collaborators.length ===
-            0 ? (
-              <div
-                className="
-                  px-3
-                  py-6
-                  text-center
-                  text-[10px]
-                  text-zinc-700
-                "
-              >
-                No other collaborators
-                online.
-              </div>
-            ) : (
-              collaborators.map(
-                (collaborator) => (
-                  <div
-                    key={
-                      collaborator.userId
-                    }
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-md
-                      px-3
-                      py-2.5
-                      transition
-                      hover:bg-white/[0.03]
-                    "
-                  >
-                    <div
-                      className="
-                        relative
-                        flex h-8 w-8
-                        shrink-0
-                        items-center
-                        justify-center
-                        rounded-full
-                        bg-[#dc9458]/10
-                        text-[10px]
-                        font-semibold
-                        text-[#dc9458]
-                      "
-                    >
-                      {(
-                        collaborator.username ||
-                        "U"
-                      )
-                        .charAt(0)
-                        .toUpperCase()}
-
-                      <span
-                        className="
-                          absolute
-                          bottom-0
-                          right-0
-                          h-2
-                          w-2
-                          rounded-full
-                          border-2
-                          border-[#111214]
-                          bg-emerald-400
-                        "
-                      />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[10px] font-medium text-zinc-300">
-                        {collaborator.username ||
-                          `User ${String(
-                            collaborator.userId
-                          ).slice(-5)}`}
-                      </div>
-
-                      <div className="mt-0.5 text-[9px] text-zinc-700">
-                        {collaborator.activeFileId
-                          ? "Editing a file"
-                          : collaborator.role ||
-                            "Collaborator"}
-                      </div>
-                    </div>
-                  </div>
-                )
-              )
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside
-          className="
-            hidden
-            w-52
-            shrink-0
-            flex-col
-            border-r border-white/[0.06]
-            bg-[#0f1012]
-            md:flex
-          "
-        >
-          {/* Explorer header */}
-
-          <div
-            className="
-              flex h-10
-              shrink-0
-              items-center
-              justify-between
-              border-b border-white/[0.05]
-              px-3
-            "
-          >
-            <span
-              className="
-                text-[9px]
-                font-semibold
-                uppercase
-                tracking-[0.16em]
-                text-zinc-600
-              "
-            >
-              Explorer
-            </span>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() =>
-                  handleCreateFile()
-                }
-                title="New File"
-                className="
-                  flex h-6 w-6
-                  items-center
-                  justify-center
-                  rounded
-                  text-zinc-700
-                  hover:bg-white/[0.04]
-                  hover:text-zinc-300
-                "
-              >
-                <Plus size={14} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleCreateFolder()
-                }
-                title="New Folder"
-                className="
-                  flex h-6 w-6
-                  items-center
-                  justify-center
-                  rounded
-                  text-zinc-700
-                  hover:bg-white/[0.04]
-                  hover:text-zinc-300
-                "
-              >
-                <Folder size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* File tree */}
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {filesLoading ? (
-              <div className="px-2 py-3 text-[10px] text-zinc-700">
-                Loading files...
-              </div>
-            ) : (
-              <>
-                <div className="mb-1 flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium text-zinc-400">
-                  <Folder
-                    size={13}
-                    className="text-[#dc9458]"
-                  />
-
-                  <span>
-                    Workspace
-                  </span>
-                </div>
-
-                <FileTree
-                  files={files}
-                  activeFileId={
-                    activeFileId
-                  }
-                  onFileSelect={
-                    handleFileSelect
-                  }
-                  onCreateFile={
-                    handleCreateFile
-                  }
-                  onCreateFolder={
-                    handleCreateFolder
-                  }
-                  onRename={
-                    handleRename
-                  }
-                  onDelete={
-                    handleDelete
-                  }
-                />
-              </>
-            )}
-          </div>
-
-          {/* Workspace info */}
-
-          <div
-            className="
-              shrink-0
-              border-t
-              border-white/[0.05]
-              p-3
-            "
-          >
-            <div className="text-[9px] uppercase tracking-[0.12em] text-zinc-700">
-              Visibility
-            </div>
-
-            <div className="mt-1 text-[10px] capitalize text-zinc-500">
-              {workspace.visibility}
-            </div>
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* File tab */}
-
-          <div
-            className="
-              flex
-              h-10
-              shrink-0
-              items-center
-              border-b border-white/[0.05]
-              bg-[#111214]
-            "
-          >
-            {activeFile && (
-              <div
-                className="
-                  flex h-full
-                  items-center
-                  gap-2
-                  border-r border-white/[0.05]
-                  border-t-2
-                  border-t-[#dc9458]
-                  bg-[#0d0e10]
-                  px-4
-                  text-[10px]
-                  text-zinc-300
-                "
-              >
-                <FileCode2
-                  size={13}
-                  className="text-[#dc9458]"
-                />
-
-                {fileName}
-
-                {isDirty && (
-                  <span className="ml-1 text-[#dc9458]">
-                    ●
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Editor */}
-
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-[#0b0c0e]">
-            {activeFile ? (
-              <Editor
-                height="100%"
-                width="100%"
-                language={
-                  editorLanguage
-                }
-                value={code}
-                onChange={
-                  handleEditorChange
-                }
-                theme="vs-dark"
-                options={{
-                  automaticLayout: true,
-
-                  minimap: {
-                    enabled: false,
-                  },
-
-                  fontSize: 13,
-
-                  lineHeight: 22,
-
-                  fontFamily:
-                    "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-
-                  padding: {
-                    top: 16,
-                    bottom: 16,
-                  },
-
-                  scrollBeyondLastLine:
-                    false,
-
-                  smoothScrolling: true,
-
-                  cursorSmoothCaretAnimation:
-                    "on",
-
-                  renderWhitespace:
-                    "selection",
-
-                  roundedSelection:
-                    false,
-
-                  folding: true,
-
-                  wordWrap: "on",
-
-                  tabSize: 2,
-
-                  insertSpaces: true,
-
-                  suggestOnTriggerCharacters:
-                    true,
-
-                  quickSuggestions:
-                    true,
-
-                  parameterHints: {
-                    enabled: true,
-                  },
-
-                  bracketPairColorization: {
-                    enabled: true,
-                  },
-
-                  guides: {
-                    indentation: true,
-                    bracketPairs: true,
-                  },
-
-                  scrollbar: {
-                    verticalScrollbarSize: 8,
-                    horizontalScrollbarSize: 8,
-                  },
-
-                  overviewRulerBorder:
-                    false,
-
-                  hideCursorInOverviewRuler:
-                    true,
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-zinc-700">
-                Select a file to start coding.
-              </div>
-            )}
-          </div>
-
-          {/* Output */}
-
-          <div
-            className="
-              flex
-              h-36
-              shrink-0
-              flex-col
-              border-t border-white/[0.06]
-              bg-[#0f1012]
-            "
-          >
-            <div
-              className="
-                flex
-                h-9
-                shrink-0
-                items-center
-                gap-2
-                border-b border-white/[0.05]
-                px-3
-              "
-            >
-              <Terminal
-                size={13}
-                className="text-zinc-600"
+        <aside className="w-64 shrink-0 border-r border-white/10 bg-[#0f1113] flex flex-col">
+          <div className="h-11 px-3 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Folder
+                size={15}
+                className="text-[#dc9458]"
               />
 
-              <span className="text-[10px] font-medium text-zinc-500">
-                Output
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Explorer
               </span>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              {output ? (
-                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-zinc-500">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() =>
+                  openCreateFileModal()
+                }
+                className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+                title="New file"
+              >
+                <FileCode2 size={15} />
+              </button>
+
+              <button
+                onClick={() =>
+                  openCreateFolderModal()
+                }
+                className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+                title="New folder"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+            {filesLoading ? (
+              <div className="px-3 py-4 text-xs text-zinc-500">
+                Loading files...
+              </div>
+            ) : (
+              <FileTree
+                files={files}
+                activeFileId={activeFileId}
+                onFileSelect={handleFileSelect}
+                onCreateFile={openCreateFileModal}
+                onCreateFolder={openCreateFolderModal}
+                onRename={openRenameModal}
+                onDelete={handleDelete}
+              />
+            )}
+          </div>
+        </aside>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* EDITOR AREA                                                      */}
+        {/* ---------------------------------------------------------------- */}
+
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#0b0d0f]">
+          {/* FILE TAB */}
+          <div className="h-10 shrink-0 border-b border-white/10 bg-[#0f1113] flex items-center">
+            {activeFile ? (
+              <div className="h-full px-4 border-r border-white/10 flex items-center gap-2 min-w-0">
+                <FileCode2
+                  size={14}
+                  className="text-[#dc9458] shrink-0"
+                />
+
+                <span className="text-xs text-zinc-300 truncate">
+                  {fileName}
+                </span>
+
+                {isDirty && (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-[#dc9458] shrink-0"
+                    title="Unsaved changes"
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="px-4 text-xs text-zinc-600">
+                No file selected
+              </div>
+            )}
+          </div>
+
+          {/* MONACO */}
+          <div className="flex-1 min-h-0">
+            {activeFile ? (
+              <Editor
+                height="100%"
+                language={editorLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                theme="vs-dark"
+                options={{
+                  automaticLayout: true,
+                  minimap: {
+                    enabled: true,
+                  },
+                  fontSize: 14,
+                  lineHeight: 22,
+                  padding: {
+                    top: 14,
+                  },
+                  scrollBeyondLastLine: false,
+                  smoothScrolling: true,
+                  cursorBlinking: "smooth",
+                  renderWhitespace: "selection",
+                  tabSize: 2,
+                  wordWrap: "on",
+                }}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <FileCode2
+                    size={30}
+                    className="mx-auto mb-3 text-zinc-700"
+                  />
+
+                  <p className="text-sm text-zinc-500">
+                    Select a file to start coding
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ---------------------------------------------------------------- */}
+          {/* OUTPUT                                                           */}
+          {/* ---------------------------------------------------------------- */}
+
+          <div className="h-36 shrink-0 border-t border-white/10 bg-[#0e1012] flex flex-col">
+            <div className="h-9 shrink-0 px-3 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Terminal
+                  size={14}
+                  className="text-[#dc9458]"
+                />
+
+                <span className="text-xs font-medium text-zinc-400">
+                  Output
+                </span>
+              </div>
+
+              {output && (
+                <button
+                  onClick={() => setOutput("")}
+                  className="text-[11px] text-zinc-600 hover:text-zinc-300 transition"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
+              {isRunning ? (
+                <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <span className="h-2 w-2 rounded-full bg-[#dc9458] animate-pulse" />
+                  Running code...
+                </div>
+              ) : output ? (
+                <pre className="font-mono text-xs leading-5 text-zinc-300 whitespace-pre-wrap break-words">
                   {output}
                 </pre>
               ) : (
-                <div className="text-[10px] text-zinc-700">
+                <div className="text-xs text-zinc-600">
                   Run your code to see the output here.
                 </div>
               )}
@@ -2546,6 +1584,98 @@ const WorkspacePage = () => {
           </div>
         </main>
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* FILE MODAL                                                         */}
+      {/* ------------------------------------------------------------------ */}
+
+      {fileModal.open && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#111416] shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-white">
+                  {fileModal.mode === "rename"
+                    ? "Rename"
+                    : fileModal.mode === "folder"
+                    ? "New Folder"
+                    : "New File"}
+                </h2>
+
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  {fileModal.mode === "rename"
+                    ? "Choose a new name."
+                    : "Add an item to your workspace."}
+                </p>
+              </div>
+
+              <button
+                onClick={closeFileModal}
+                className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <input
+                autoFocus
+                value={fileModal.value}
+                onChange={(event) =>
+                  setFileModal((current) => ({
+                    ...current,
+                    value: event.target.value,
+                  }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    if (
+                      fileModal.mode ===
+                      "rename"
+                    ) {
+                      handleRename();
+                    } else {
+                      handleCreateFile();
+                    }
+                  }
+
+                  if (event.key === "Escape") {
+                    closeFileModal();
+                  }
+                }}
+                placeholder={
+                  fileModal.mode === "folder"
+                    ? "components"
+                    : "App.js"
+                }
+                className="w-full h-10 rounded-lg border border-white/10 bg-[#0b0d0f] px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#dc9458]/50"
+              />
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  onClick={closeFileModal}
+                  className="h-9 px-4 rounded-lg border border-white/10 text-xs text-zinc-400 hover:text-white hover:bg-white/5 transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={
+                    fileModal.mode === "rename"
+                      ? handleRename
+                      : handleCreateFile
+                  }
+                  className="h-9 px-4 rounded-lg bg-[#dc9458] text-black text-xs font-semibold hover:bg-[#e5a46c] transition"
+                >
+                  {fileModal.mode === "rename"
+                    ? "Rename"
+                    : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

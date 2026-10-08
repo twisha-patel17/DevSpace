@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import {
   MoreVertical,
   UserRound,
@@ -13,124 +15,352 @@ import {
   Pencil,
   Copy,
   Trash2,
+  LoaderCircle,
 } from "lucide-react";
 
 import CreateWorkspaceModal from "../components/CreateWorkspaceModal";
 
-const initialWorkspaces = [
-  {
-    id: 1,
-    language: "JS",
-    languageName: "JavaScript",
-    languageColor: "bg-[#302f1c] text-[#e5c82d]",
-    title: "Portfolio",
-    description: "Personal portfolio website",
-    collaborators: 3,
-    avatars: ["TP", "RK", "PS"],
-    time: "12m ago",
-    status: "Active",
-  },
-  {
-    id: 2,
-    language: "C++",
-    languageName: "C++",
-    languageColor: "bg-[#1c2638] text-[#72a4e2]",
-    title: "DSA Practice",
-    description: "Algorithms and data structures",
-    collaborators: 1,
-    avatars: ["TP"],
-    time: "Yesterday",
-    status: "Active",
-  },
-  {
-    id: 3,
-    language: "PY",
-    languageName: "Python",
-    languageColor: "bg-[#1c3029] text-[#65bc8d]",
-    title: "Quest API",
-    description: "Backend API development",
-    collaborators: 2,
-    avatars: ["TP", "PS"],
-    time: "3 days ago",
-    status: "Offline",
-  },
-];
+import {
+  useWorkspaces,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+} from "../lib/workspace.queries";
 
-const quickActions = [
-  {
-    title: "Shared With Me",
-    description: "Projects shared with you",
-    icon: UserRound,
-  },
-  {
-    title: "Recent Files",
-    description: "Continue where you left off",
-    icon: FileText,
-  },
-  {
-    title: "Activity",
-    description: "See recent workspace activity",
-    icon: Activity,
-  },
-];
+/* =========================================================
+   HELPERS
+========================================================= */
 
-const activities = [
-  {
-    text: "Rahul joined Portfolio",
-    workspace: "Portfolio",
-    time: "10:42 AM",
-    dot: "bg-[#73a8e9]",
-  },
-  {
-    text: "You edited App.jsx",
-    workspace: "Portfolio",
-    time: "10:18 AM",
-    dot: "bg-[#df9758]",
-  },
-  {
-    text: "Priya created Navbar.jsx",
-    workspace: "Quest API",
-    time: "9:51 AM",
-    dot: "bg-[#a67adb]",
-  },
-  {
-    text: "You created a new workspace",
-    workspace: "DSA Practice",
-    time: "Yesterday",
-    dot: "bg-emerald-400",
-  },
-];
+const getInitials = (user) => {
+  if (!user) return "?";
+
+  const name =
+    user.username ||
+    user.name ||
+    user.email ||
+    "";
+
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+};
+
+const getUserName = (user) => {
+  if (!user) return "Unknown user";
+
+  return (
+    user.username ||
+    user.name ||
+    user.email ||
+    "Unknown user"
+  );
+};
+
+const getLanguageInfo = (language) => {
+  const normalized = String(language || "")
+    .toLowerCase()
+    .trim();
+
+  const languages = {
+    javascript: {
+      short: "JS",
+      name: "JavaScript",
+      className: "bg-[#302f1c] text-[#e5c82d]",
+    },
+
+    js: {
+      short: "JS",
+      name: "JavaScript",
+      className: "bg-[#302f1c] text-[#e5c82d]",
+    },
+
+    typescript: {
+      short: "TS",
+      name: "TypeScript",
+      className: "bg-[#1c2638] text-[#72a4e2]",
+    },
+
+    ts: {
+      short: "TS",
+      name: "TypeScript",
+      className: "bg-[#1c2638] text-[#72a4e2]",
+    },
+
+    "c++": {
+      short: "C++",
+      name: "C++",
+      className: "bg-[#1c2638] text-[#72a4e2]",
+    },
+
+    cpp: {
+      short: "C++",
+      name: "C++",
+      className: "bg-[#1c2638] text-[#72a4e2]",
+    },
+
+    python: {
+      short: "PY",
+      name: "Python",
+      className: "bg-[#1c3029] text-[#65bc8d]",
+    },
+
+    java: {
+      short: "JAVA",
+      name: "Java",
+      className: "bg-[#30231d] text-[#df9758]",
+    },
+
+    go: {
+      short: "GO",
+      name: "Go",
+      className: "bg-[#1d2d31] text-[#66c7d4]",
+    },
+
+    rust: {
+      short: "RS",
+      name: "Rust",
+      className: "bg-[#30251e] text-[#d99a67]",
+    },
+  };
+
+  return (
+    languages[normalized] || {
+      short:
+        String(language || "CODE")
+          .slice(0, 4)
+          .toUpperCase(),
+
+      name:
+        language || "Unknown",
+
+      className:
+        "bg-[#242528] text-zinc-400",
+    }
+  );
+};
+
+const getWorkspaceRole = (workspace) => {
+  return (
+    workspace?.role ||
+    workspace?.memberRole ||
+    "owner"
+  );
+};
+
+const getCollaborators = (workspace) => {
+  if (Array.isArray(workspace?.members)) {
+    return workspace.members.length;
+  }
+
+  return 0;
+};
+
+const getWorkspaceMembers = (workspace) => {
+  if (!Array.isArray(workspace?.members)) {
+    return [];
+  }
+
+  return workspace.members;
+};
+
+const formatRelativeTime = (date) => {
+  if (!date) return "No recent activity";
+
+  const timestamp = new Date(date).getTime();
+
+  if (Number.isNaN(timestamp)) {
+    return "Recently";
+  }
+
+  const difference = Date.now() - timestamp;
+
+  if (difference < 60 * 1000) {
+    return "Just now";
+  }
+
+  const minutes = Math.floor(
+    difference / (60 * 1000)
+  );
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(
+    difference / (60 * 60 * 1000)
+  );
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(
+    difference / (24 * 60 * 60 * 1000)
+  );
+
+  if (days === 1) {
+    return "Yesterday";
+  }
+
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  const months = Math.floor(days / 30);
+
+  if (months < 12) {
+    return `${months}mo ago`;
+  }
+
+  return `${Math.floor(months / 12)}y ago`;
+};
+
+/* =========================================================
+   AVATAR
+========================================================= */
+
+const UserAvatar = ({
+  user,
+  index = 0,
+}) => {
+  const styles = [
+    "bg-[#df9758] text-[#17110d]",
+    "bg-[#73a8e9] text-[#111214]",
+    "bg-[#a67adb] text-[#111214]",
+    "bg-[#65bc8d] text-[#111214]",
+  ];
+
+  const avatarUrl =
+    user?.avatar ||
+    user?.profilePicture ||
+    null;
+
+  return (
+    <span
+      className={`
+        flex h-6 w-6
+        shrink-0
+        items-center justify-center
+        overflow-hidden
+        rounded-full
+        border-2 border-[#111214]
+        text-[7px]
+        font-bold
+        ${styles[index % styles.length]}
+      `}
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={getUserName(user)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        getInitials(user)
+      )}
+    </span>
+  );
+};
 
 /* =========================================================
    AVATAR STACK
 ========================================================= */
 
-const AvatarStack = ({ avatars }) => {
-  const styles = [
-    "bg-[#df9758] text-[#17110d]",
-    "bg-[#73a8e9] text-[#111214]",
-    "bg-[#a67adb] text-[#111214]",
-  ];
+const AvatarStack = ({
+  workspace,
+}) => {
+  const members = getWorkspaceMembers(
+    workspace
+  );
+
+  const owner =
+    workspace?.owner ||
+    workspace?.createdBy ||
+    null;
+
+  const people = [];
+
+  if (owner) {
+    people.push(owner);
+  }
+
+  members.forEach((member) => {
+    const user =
+      member?.user ||
+      member;
+
+    if (
+      user &&
+      !people.some(
+        (existing) =>
+          String(existing?._id) ===
+          String(user?._id)
+      )
+    ) {
+      people.push(user);
+    }
+  });
+
+  const visiblePeople = people.slice(0, 4);
+
+  if (!visiblePeople.length) {
+    return (
+      <div
+        className="
+          flex h-6 w-6
+          items-center justify-center
+          rounded-full
+          border border-white/[0.08]
+          bg-[#1a1b1e]
+          text-zinc-600
+        "
+      >
+        <UserRound size={11} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center">
-      {avatars.map((avatar, index) => (
+      {visiblePeople.map((user, index) => (
+        <div
+          key={
+            user?._id ||
+            user?.id ||
+            `${getUserName(user)}-${index}`
+          }
+          className={
+            index !== 0
+              ? "-ml-1.5"
+              : ""
+          }
+        >
+          <UserAvatar
+            user={user}
+            index={index}
+          />
+        </div>
+      ))}
+
+      {people.length > 4 && (
         <span
-          key={`${avatar}-${index}`}
-          className={`
-            ${index !== 0 ? "-ml-1.5" : ""}
+          className="
+            -ml-1.5
             flex h-6 w-6
             items-center justify-center
             rounded-full
             border-2 border-[#111214]
+            bg-[#242528]
             text-[7px]
-            font-bold
-            ${styles[index % styles.length]}
-          `}
+            font-semibold
+            text-zinc-400
+          "
         >
-          {avatar}
+          +{people.length - 4}
         </span>
-      ))}
+      )}
     </div>
   );
 };
@@ -142,10 +372,42 @@ const AvatarStack = ({ avatars }) => {
 const WorkspaceMenu = ({
   workspace,
   onClose,
+  onOpen,
+  onDelete,
 }) => {
-  const handleAction = (action) => {
-    console.log(`${action}:`, workspace.title);
+  const handleDelete = () => {
+    const confirmed = window.confirm(
+      `Delete "${workspace.name || workspace.title}"? This cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    onDelete();
     onClose();
+  };
+
+  const handleAction = (action) => {
+    if (action === "Open") {
+      onOpen();
+      onClose();
+      return;
+    }
+
+    if (action === "Rename") {
+      // Rename will be connected when the
+      // workspace edit flow is added here.
+      onClose();
+      return;
+    }
+
+    if (action === "Duplicate") {
+      // Duplicate will be connected when
+      // workspace duplication is implemented.
+      onClose();
+      return;
+    }
   };
 
   return (
@@ -159,8 +421,8 @@ const WorkspaceMenu = ({
         bg-[#18191c]
         shadow-2xl shadow-black/40
       "
-      onClick={(e) =>
-        e.stopPropagation()
+      onClick={(event) =>
+        event.stopPropagation()
       }
     >
       <button
@@ -182,6 +444,7 @@ const WorkspaceMenu = ({
           size={13}
           className="text-zinc-500"
         />
+
         Open
       </button>
 
@@ -204,6 +467,7 @@ const WorkspaceMenu = ({
           size={13}
           className="text-zinc-500"
         />
+
         Rename
       </button>
 
@@ -226,6 +490,7 @@ const WorkspaceMenu = ({
           size={13}
           className="text-zinc-500"
         />
+
         Duplicate
       </button>
 
@@ -233,9 +498,7 @@ const WorkspaceMenu = ({
 
       <button
         type="button"
-        onClick={() =>
-          handleAction("Delete")
-        }
+        onClick={handleDelete}
         className="
           flex w-full items-center gap-2.5
           px-3 py-2.5
@@ -247,6 +510,7 @@ const WorkspaceMenu = ({
         "
       >
         <Trash2 size={13} />
+
         Delete
       </button>
     </div>
@@ -262,20 +526,64 @@ const WorkspaceCard = ({
   menuOpen,
   onMenuToggle,
   onMenuClose,
+  onOpen,
+  onDelete,
 }) => {
+  const language = getLanguageInfo(
+    workspace.language
+  );
+
+  const title =
+    workspace.name ||
+    workspace.title ||
+    "Untitled workspace";
+
+  const description =
+    workspace.description ||
+    "No description";
+
+  const collaborators =
+    getCollaborators(workspace);
+
+  const lastActivity =
+    workspace.lastOpenedAt ||
+    workspace.updatedAt ||
+    workspace.createdAt;
+
+  const isOwner =
+    getWorkspaceRole(workspace) ===
+    "owner";
+
   return (
     <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Enter" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
       className="
+        group
         relative
         min-h-[156px]
+        cursor-pointer
         rounded-xl
         border border-white/[0.075]
         bg-[#111214]
         p-4
         transition-all duration-200
         hover:-translate-y-0.5
-        hover:border-white/[0.13]
+        hover:border-[#dc9458]/20
         hover:bg-[#141517]
+        focus:outline-none
+        focus:ring-1
+        focus:ring-[#dc9458]/30
       "
     >
       {/* TOP ROW */}
@@ -289,18 +597,18 @@ const WorkspaceCard = ({
             font-mono
             text-[9px]
             font-semibold
-            ${workspace.languageColor}
+            ${language.className}
           `}
         >
-          {workspace.language}
+          {language.short}
         </div>
 
         <div className="relative">
           <button
             type="button"
-            aria-label={`More options for ${workspace.title}`}
-            onClick={(e) => {
-              e.stopPropagation();
+            aria-label={`More options for ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
               onMenuToggle();
             }}
             className="
@@ -320,6 +628,8 @@ const WorkspaceCard = ({
             <WorkspaceMenu
               workspace={workspace}
               onClose={onMenuClose}
+              onOpen={onOpen}
+              onDelete={onDelete}
             />
           )}
         </div>
@@ -336,30 +646,38 @@ const WorkspaceCard = ({
               font-semibold
               tracking-[-0.015em]
               text-zinc-200
+              transition-colors
+              group-hover:text-white
             "
           >
-            {workspace.title}
+            {title}
           </h3>
 
-          {workspace.status === "Active" && (
+          {isOwner && (
             <span
               className="
-                h-1.5 w-1.5
                 shrink-0
                 rounded-full
-                bg-emerald-400
-                shadow-[0_0_6px_rgba(52,211,153,0.35)]
+                bg-[#2c231d]
+                px-1.5 py-0.5
+                text-[7px]
+                font-medium
+                uppercase
+                tracking-wide
+                text-[#df9758]
               "
-            />
+            >
+              Owner
+            </span>
           )}
         </div>
 
         <p className="mt-1 truncate text-[11px] text-zinc-600">
-          {workspace.languageName} ·{" "}
-          {workspace.collaborators}{" "}
-          {workspace.collaborators === 1
-            ? "collaborator"
-            : "collaborators"}
+          {language.name} ·{" "}
+          {collaborators}{" "}
+          {collaborators === 1
+            ? "member"
+            : "members"}
         </p>
 
         {workspace.description && (
@@ -371,7 +689,7 @@ const WorkspaceCard = ({
               text-zinc-700
             "
           >
-            {workspace.description}
+            {description}
           </p>
         )}
       </div>
@@ -380,11 +698,13 @@ const WorkspaceCard = ({
 
       <div className="mt-4 flex items-center justify-between">
         <AvatarStack
-          avatars={workspace.avatars}
+          workspace={workspace}
         />
 
         <span className="text-[10px] text-zinc-600">
-          {workspace.time}
+          {formatRelativeTime(
+            lastActivity
+          )}
         </span>
       </div>
     </article>
@@ -397,12 +717,14 @@ const WorkspaceCard = ({
 
 const QuickAction = ({
   action,
+  onClick,
 }) => {
   const Icon = action.icon;
 
   return (
     <button
       type="button"
+      onClick={onClick}
       className="
         group
         flex min-h-[105px]
@@ -499,87 +821,225 @@ const StatCard = ({
 ========================================================= */
 
 const DashboardPage = () => {
+  const navigate = useNavigate();
 
-  /* ================= WORKSPACES ================= */
+  /* ================= DATA ================= */
 
-  const [workspaces, setWorkspaces] =
-    useState(initialWorkspaces);
+  const {
+    data: workspaces = [],
+    isLoading,
+    isError,
+  } = useWorkspaces();
 
-  /* ================= MENU ================= */
+  /* ================= MUTATIONS ================= */
+
+  const createWorkspaceMutation =
+    useCreateWorkspace();
+
+  const deleteWorkspaceMutation =
+    useDeleteWorkspace();
+
+  /* ================= UI ================= */
 
   const [openMenu, setOpenMenu] =
     useState(null);
-
-  /* ================= MODAL ================= */
 
   const [showCreateModal, setShowCreateModal] =
     useState(false);
 
   /* =========================================================
-     OPEN CREATE WORKSPACE MODAL
+     DERIVED STATS
   ========================================================= */
 
-  const handleOpenCreateWorkspace = () => {
-    setShowCreateModal(true);
-  };
+  const stats = useMemo(() => {
+    const totalCollaborators =
+      workspaces.reduce(
+        (total, workspace) => {
+          return (
+            total +
+            getCollaborators(workspace)
+          );
+        },
+        0
+      );
+
+    return {
+      total: workspaces.length,
+      active: workspaces.length,
+      collaborators:
+        totalCollaborators,
+    };
+  }, [workspaces]);
 
   /* =========================================================
-     CLOSE CREATE WORKSPACE MODAL
+     OPEN WORKSPACE
   ========================================================= */
 
-  const handleCloseCreateWorkspace = () => {
-    setShowCreateModal(false);
+  const handleOpenWorkspace = (
+    workspaceId
+  ) => {
+    if (!workspaceId) return;
+
+    navigate(
+      `/workspace/${workspaceId}`
+    );
   };
 
   /* =========================================================
      CREATE WORKSPACE
   ========================================================= */
 
-  const handleWorkspaceCreated = (
+  const handleWorkspaceCreated = async (
     workspaceData
   ) => {
-    const newWorkspace = {
-      ...workspaceData,
+    try {
+      const workspace =
+        await createWorkspaceMutation.mutateAsync(
+          workspaceData
+        );
 
-      id: Date.now(),
+      setShowCreateModal(false);
 
-      collaborators: 1,
-
-      avatars: ["TP"],
-
-      time: "Just now",
-
-      status: "Active",
-    };
-
-    setWorkspaces((current) => [
-      newWorkspace,
-      ...current,
-    ]);
-
-    setShowCreateModal(false);
+      if (workspace?._id) {
+        navigate(
+          `/workspace/${workspace._id}`
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Failed to create workspace:",
+        error
+      );
+    }
   };
 
   /* =========================================================
-     MENU HANDLERS
+     DELETE WORKSPACE
   ========================================================= */
 
-  const handleMenuToggle = (id) => {
-    setOpenMenu((current) =>
-      current === id ? null : id
-    );
+  const handleDeleteWorkspace = async (
+    workspace
+  ) => {
+    if (!workspace?._id) return;
+
+    try {
+      await deleteWorkspaceMutation.mutateAsync(
+        workspace._id
+      );
+    } catch (error) {
+      console.error(
+        "Failed to delete workspace:",
+        error
+      );
+    }
   };
+
+  /* =========================================================
+     CLOSE MENU
+  ========================================================= */
 
   const handleMenuClose = () => {
     setOpenMenu(null);
   };
 
+  /* =========================================================
+     QUICK ACTIONS
+  ========================================================= */
+
+  const handleQuickAction = (
+    action
+  ) => {
+    if (action === "shared") {
+      navigate("/shared-with-me");
+      return;
+    }
+
+    if (action === "recent") {
+      navigate("/workspaces");
+      return;
+    }
+
+    if (action === "activity") {
+      return;
+    }
+  };
+
+  /* =========================================================
+     LOADING
+  ========================================================= */
+
+  if (isLoading) {
+    return (
+      <main
+        className="
+          min-h-screen
+          bg-[#090a0b]
+          text-zinc-100
+        "
+      >
+        <div
+          className="
+            flex min-h-screen
+            items-center justify-center
+          "
+        >
+          <div className="flex items-center gap-2.5 text-zinc-500">
+            <LoaderCircle
+              size={17}
+              className="animate-spin"
+            />
+
+            <span className="text-[12px]">
+              Loading your workspaces...
+            </span>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* =========================================================
+     ERROR
+  ========================================================= */
+
+  if (isError) {
+    return (
+      <main
+        className="
+          min-h-screen
+          bg-[#090a0b]
+          px-4
+          pt-[100px]
+          text-zinc-100
+          sm:px-6
+          lg:px-8
+        "
+      >
+        <div className="mx-auto max-w-[1280px]">
+          <div
+            className="
+              rounded-xl
+              border border-red-500/10
+              bg-[#111214]
+              p-6
+            "
+          >
+            <p className="text-[13px] font-semibold text-zinc-200">
+              Couldn't load your workspaces
+            </p>
+
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Please refresh the page and try
+              again.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <>
-      {/* =====================================================
-          DASHBOARD
-      ===================================================== */}
-
       <main
         className="
           min-h-screen
@@ -636,11 +1096,12 @@ const DashboardPage = () => {
                     sm:text-[28px]
                   "
                 >
-                  Good afternoon, Twisha
+                  Your development space
                 </h1>
 
                 <p className="mt-1.5 text-[13px] text-zinc-600">
-                  Continue building where you left off.
+                  Continue building where you
+                  left off.
                 </p>
               </div>
             </section>
@@ -661,7 +1122,7 @@ const DashboardPage = () => {
               <StatCard
                 icon={FolderKanban}
                 label="TOTAL"
-                value={workspaces.length}
+                value={stats.total}
                 description="Workspaces"
                 iconClass="text-[#dc9458]"
               />
@@ -669,30 +1130,31 @@ const DashboardPage = () => {
               <StatCard
                 icon={Code2}
                 label="ACTIVE"
-                value={
-                  workspaces.filter(
-                    (workspace) =>
-                      workspace.status ===
-                      "Active"
-                  ).length
-                }
-                description="Active projects"
+                value={stats.active}
+                description="Available projects"
                 iconClass="text-[#73a8e9]"
               />
 
               <StatCard
                 icon={Users}
                 label="TEAM"
-                value="4"
-                description="Collaborators"
+                value={stats.collaborators}
+                description="Workspace members"
                 iconClass="text-[#a67adb]"
               />
 
               <StatCard
                 icon={Clock3}
-                label="TODAY"
-                value="12"
-                description="Files edited"
+                label="RECENT"
+                value={
+                  workspaces.length
+                    ? Math.min(
+                        workspaces.length,
+                        5
+                      )
+                    : 0
+                }
+                description="Recent projects"
                 iconClass="text-emerald-400"
               />
             </section>
@@ -715,8 +1177,8 @@ const DashboardPage = () => {
 
                 <button
                   type="button"
-                  onClick={
-                    handleOpenCreateWorkspace
+                  onClick={() =>
+                    setShowCreateModal(true)
                   }
                   className="
                     flex items-center gap-1
@@ -732,35 +1194,107 @@ const DashboardPage = () => {
                 </button>
               </div>
 
-              <div
-                className="
-                  grid
-                  gap-3
-                  sm:grid-cols-2
-                  xl:grid-cols-3
-                "
-              >
-                {workspaces.map(
-                  (workspace) => (
-                    <WorkspaceCard
-                      key={workspace.id}
-                      workspace={workspace}
-                      menuOpen={
-                        openMenu ===
-                        workspace.id
-                      }
-                      onMenuToggle={() =>
-                        handleMenuToggle(
-                          workspace.id
-                        )
-                      }
-                      onMenuClose={
-                        handleMenuClose
-                      }
-                    />
-                  )
-                )}
-              </div>
+              {workspaces.length === 0 ? (
+                <div
+                  className="
+                    flex min-h-[190px]
+                    flex-col
+                    items-center
+                    justify-center
+                    rounded-xl
+                    border border-dashed
+                    border-white/[0.08]
+                    bg-[#111214]
+                    text-center
+                  "
+                >
+                  <div
+                    className="
+                      flex h-10 w-10
+                      items-center justify-center
+                      rounded-lg
+                      bg-[#2c231d]
+                      text-[#df9758]
+                    "
+                  >
+                    <FolderKanban size={17} />
+                  </div>
+
+                  <p className="mt-3 text-[12px] font-semibold text-zinc-300">
+                    No workspaces yet
+                  </p>
+
+                  <p className="mt-1 max-w-[280px] text-[10px] leading-4 text-zinc-600">
+                    Create your first workspace
+                    and start building.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowCreateModal(true)
+                    }
+                    className="
+                      mt-4
+                      rounded-md
+                      bg-[#dc9458]
+                      px-3
+                      py-2
+                      text-[10px]
+                      font-semibold
+                      text-[#17110d]
+                      transition-colors
+                      hover:bg-[#eca267]
+                    "
+                  >
+                    Create workspace
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="
+                    grid
+                    gap-3
+                    sm:grid-cols-2
+                    xl:grid-cols-3
+                  "
+                >
+                  {workspaces.map(
+                    (workspace) => (
+                      <WorkspaceCard
+                        key={workspace._id}
+                        workspace={workspace}
+                        menuOpen={
+                          openMenu ===
+                          workspace._id
+                        }
+                        onMenuToggle={() =>
+                          setOpenMenu(
+                            (current) =>
+                              current ===
+                              workspace._id
+                                ? null
+                                : workspace._id
+                          )
+                        }
+                        onMenuClose={
+                          handleMenuClose
+                        }
+                        onOpen={() =>
+                          handleOpenWorkspace(
+                            workspace._id
+                          )
+                        }
+                        onDelete={() =>
+                          handleDeleteWorkspace(
+                            workspace
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              )}
             </section>
 
             {/* =================================================
@@ -786,103 +1320,167 @@ const DashboardPage = () => {
                   sm:grid-cols-3
                 "
               >
-                {quickActions.map(
-                  (action) => (
-                    <QuickAction
-                      key={action.title}
-                      action={action}
-                    />
-                  )
-                )}
+                <QuickAction
+                  action={{
+                    title: "Shared With Me",
+                    description:
+                      "Projects shared with you",
+                    icon: UserRound,
+                  }}
+                  onClick={() =>
+                    handleQuickAction(
+                      "shared"
+                    )
+                  }
+                />
+
+                <QuickAction
+                  action={{
+                    title: "All Workspaces",
+                    description:
+                      "Browse your projects",
+                    icon: FileText,
+                  }}
+                  onClick={() =>
+                    handleQuickAction(
+                      "recent"
+                    )
+                  }
+                />
+
+                <QuickAction
+                  action={{
+                    title: "Activity",
+                    description:
+                      "Workspace activity",
+                    icon: Activity,
+                  }}
+                  onClick={() =>
+                    handleQuickAction(
+                      "activity"
+                    )
+                  }
+                />
               </div>
             </section>
 
             {/* =================================================
-                RECENT ACTIVITY
+                ACTIVITY
             ================================================= */}
 
             <section className="mt-11">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h2 className="text-[14px] font-semibold text-zinc-200">
-                    Recent activity
+                    Workspace activity
                   </h2>
 
                   <p className="mt-0.5 text-[10px] text-zinc-700">
-                    What's happening in your workspaces
+                    Your latest workspace changes
                   </p>
                 </div>
+              </div>
 
-                <button
-                  type="button"
+              {workspaces.length === 0 ? (
+                <div
                   className="
-                    flex items-center gap-1
-                    text-[11px]
-                    text-[#df9758]
-                    transition-colors
-                    hover:text-[#eca267]
+                    rounded-xl
+                    border border-white/[0.07]
+                    bg-[#111214]
+                    px-4
+                    py-8
+                    text-center
                   "
                 >
-                  View all
+                  <Activity
+                    size={18}
+                    className="mx-auto text-zinc-700"
+                  />
 
-                  <ArrowUpRight size={12} />
-                </button>
-              </div>
+                  <p className="mt-2 text-[11px] text-zinc-600">
+                    Activity will appear here
+                    as you work.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="
+                    overflow-hidden
+                    rounded-xl
+                    border border-white/[0.07]
+                    bg-[#111214]
+                  "
+                >
+                  {workspaces
+                    .slice(0, 5)
+                    .map(
+                      (
+                        workspace,
+                        index
+                      ) => {
+                        const title =
+                          workspace.name ||
+                          workspace.title ||
+                          "Untitled workspace";
 
-              <div
-                className="
-                  overflow-hidden
-                  rounded-xl
-                  border border-white/[0.07]
-                  bg-[#111214]
-                "
-              >
-                {activities.map(
-                  (activity, index) => (
-                    <div
-                      key={`${activity.text}-${index}`}
-                      className={`
-                        flex items-center gap-3
-                        px-4 py-3.5
-                        transition-colors
-                        hover:bg-white/[0.015]
+                        const time =
+                          workspace.lastOpenedAt ||
+                          workspace.updatedAt ||
+                          workspace.createdAt;
 
-                        ${
-                          index !==
-                          activities.length - 1
-                            ? "border-b border-white/[0.045]"
-                            : ""
-                        }
-                      `}
-                    >
-                      <span
-                        className={`
-                          h-2 w-2
-                          shrink-0
-                          rounded-full
-                          ${activity.dot}
-                        `}
-                      />
+                        return (
+                          <div
+                            key={
+                              workspace._id
+                            }
+                            className={`
+                              flex items-center gap-3
+                              px-4 py-3.5
+                              transition-colors
+                              hover:bg-white/[0.015]
 
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] text-zinc-300">
-                          {activity.text}
-                        </p>
+                              ${
+                                index !==
+                                Math.min(
+                                  workspaces.length,
+                                  5
+                                ) - 1
+                                  ? "border-b border-white/[0.045]"
+                                  : ""
+                              }
+                            `}
+                          >
+                            <span
+                              className="
+                                h-2 w-2
+                                shrink-0
+                                rounded-full
+                                bg-[#df9758]
+                              "
+                            />
 
-                        <p className="mt-0.5 text-[9px] text-zinc-700">
-                          {activity.workspace}
-                        </p>
-                      </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] text-zinc-300">
+                                {title}
+                              </p>
 
-                      <span className="shrink-0 text-[9px] text-zinc-600">
-                        {activity.time}
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
+                              <p className="mt-0.5 text-[9px] text-zinc-700">
+                                Workspace
+                              </p>
+                            </div>
+
+                            <span className="shrink-0 text-[9px] text-zinc-600">
+                              {formatRelativeTime(
+                                time
+                              )}
+                            </span>
+                          </div>
+                        );
+                      }
+                    )}
+                </div>
+              )}
             </section>
-
           </div>
         </div>
       </main>
@@ -893,13 +1491,45 @@ const DashboardPage = () => {
 
       <CreateWorkspaceModal
         isOpen={showCreateModal}
-        onClose={
-          handleCloseCreateWorkspace
+        onClose={() =>
+          setShowCreateModal(false)
         }
         onCreate={
           handleWorkspaceCreated
         }
       />
+
+      {createWorkspaceMutation.isPending && (
+        <div
+          className="
+            fixed
+            bottom-5
+            right-5
+            z-50
+            flex
+            items-center
+            gap-2
+            rounded-lg
+            border border-white/[0.08]
+            bg-[#18191c]
+            px-3
+            py-2.5
+            shadow-xl
+          "
+        >
+          <LoaderCircle
+            size={13}
+            className="
+              animate-spin
+              text-[#df9758]
+            "
+          />
+
+          <span className="text-[10px] text-zinc-400">
+            Creating workspace...
+          </span>
+        </div>
+      )}
     </>
   );
 };

@@ -94,7 +94,9 @@ const FileTreeItem = ({
             ? "bg-violet-500/15 text-violet-300"
             : "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200"
         }`}
-        style={{ paddingLeft: `${level * 14 + 6}px` }}
+        style={{
+          paddingLeft: `${level * 14 + 6}px`,
+        }}
       >
         <button
           type="button"
@@ -103,9 +105,15 @@ const FileTreeItem = ({
         >
           {isFolder ? (
             expanded ? (
-              <ChevronDown size={14} className="shrink-0" />
+              <ChevronDown
+                size={14}
+                className="shrink-0"
+              />
             ) : (
-              <ChevronRight size={14} className="shrink-0" />
+              <ChevronRight
+                size={14}
+                className="shrink-0"
+              />
             )
           ) : (
             <span className="w-[14px]" />
@@ -130,7 +138,9 @@ const FileTreeItem = ({
             />
           )}
 
-          <span className="truncate">{item.name}</span>
+          <span className="truncate">
+            {item.name}
+          </span>
         </button>
 
         <button
@@ -189,24 +199,26 @@ const FileTreeItem = ({
         )}
       </div>
 
-      {isFolder && expanded && children.length > 0 && (
-        <div>
-          {children.map((child) => (
-            <FileTreeItem
-              key={child._id}
-              item={child}
-              files={files}
-              activeFileId={activeFileId}
-              onFileSelect={onFileSelect}
-              onCreateFile={onCreateFile}
-              onCreateFolder={onCreateFolder}
-              onRename={onRename}
-              onDelete={onDelete}
-              level={level + 1}
-            />
-          ))}
-        </div>
-      )}
+      {isFolder &&
+        expanded &&
+        children.length > 0 && (
+          <div>
+            {children.map((child) => (
+              <FileTreeItem
+                key={child._id}
+                item={child}
+                files={files}
+                activeFileId={activeFileId}
+                onFileSelect={onFileSelect}
+                onCreateFile={onCreateFile}
+                onCreateFolder={onCreateFolder}
+                onRename={onRename}
+                onDelete={onDelete}
+                level={level + 1}
+              />
+            ))}
+          </div>
+        )}
     </div>
   );
 };

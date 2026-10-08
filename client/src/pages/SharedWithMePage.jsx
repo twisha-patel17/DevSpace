@@ -9,14 +9,10 @@ import {
   Eye,
   Pencil,
   Code2,
-  UserRound,
+  FolderGit2,
 } from "lucide-react";
 
 import { useSharedWorkspaces } from "../lib/workspace.queries";
-
-/* =========================================================
-   LANGUAGE STYLES
-========================================================= */
 
 const languageStyles = {
   JavaScript: {
@@ -50,78 +46,241 @@ const languageStyles = {
   },
 };
 
-/* =========================================================
-   AVATAR STACK
-========================================================= */
+const getLanguageInfo = (language) => {
+  if (!language) {
+    return languageStyles.Blank;
+  }
 
-const AvatarStack = ({ count }) => {
-  const avatars = ["TP", "RK", "PS", "AM"];
+  return (
+    languageStyles[language] ||
+    {
+      short: language.slice(0, 3).toUpperCase(),
+      className:
+        "bg-[#252629] text-zinc-300",
+    }
+  );
+};
 
-  const avatarStyles = [
-    "bg-[#df9758] text-[#17110d]",
-    "bg-[#73a8e9] text-[#111214]",
-    "bg-[#a67adb] text-[#111214]",
-    "bg-[#65bc8d] text-[#111214]",
-  ];
+const getInitials = (name = "") => {
+  const value = name.trim();
+
+  if (!value) return "?";
+
+  const parts = value.split(/\s+/);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0]}${
+    parts[parts.length - 1][0]
+  }`.toUpperCase();
+};
+
+const getOwnerName = (workspace) => {
+  return (
+    workspace.owner?.username ||
+    workspace.owner?.name ||
+    workspace.createdBy?.username ||
+    workspace.createdBy?.name ||
+    workspace.ownerName ||
+    "Unknown user"
+  );
+};
+
+const getWorkspaceRole = (workspace) => {
+  return (
+    workspace.role ||
+    workspace.memberRole ||
+    workspace.members?.find(
+      (member) =>
+        member.user?._id === workspace.currentUserId ||
+        member.userId === workspace.currentUserId
+    )?.role ||
+    "viewer"
+  ).toLowerCase();
+};
+
+const formatUpdatedAt = (date) => {
+  if (!date) {
+    return "Recently updated";
+  }
+
+  const updatedDate = new Date(date);
+
+  if (Number.isNaN(updatedDate.getTime())) {
+    return "Recently updated";
+  }
+
+  const diff =
+    Date.now() - updatedDate.getTime();
+
+  const minutes = Math.floor(
+    diff / (1000 * 60)
+  );
+
+  if (minutes < 1) {
+    return "Just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 7) {
+    return `${days}d ago`;
+  }
+
+  return updatedDate.toLocaleDateString(
+    undefined,
+    {
+      day: "numeric",
+      month: "short",
+      year:
+        updatedDate.getFullYear() !==
+        new Date().getFullYear()
+          ? "numeric"
+          : undefined,
+    }
+  );
+};
+
+const UserAvatar = ({
+  name,
+  avatar,
+}) => {
+  if (avatar) {
+    return (
+      <img
+        src={avatar}
+        alt={name}
+        className="
+          h-7
+          w-7
+          rounded-full
+          border-2
+          border-[#111214]
+          object-cover
+        "
+      />
+    );
+  }
+
+  return (
+    <div
+      className="
+        flex
+        h-7
+        w-7
+        items-center
+        justify-center
+        rounded-full
+        border-2
+        border-[#111214]
+        bg-[#dc9458]/15
+        text-[8px]
+        font-bold
+        text-[#dc9458]
+      "
+    >
+      {getInitials(name)}
+    </div>
+  );
+};
+
+const MemberStack = ({ workspace }) => {
+  const members = workspace.members || [];
+
+  const visibleMembers = members.slice(0, 4);
+
+  if (visibleMembers.length === 0) {
+    return (
+      <div className="flex items-center">
+        <UserAvatar
+          name={getOwnerName(workspace)}
+          avatar={workspace.owner?.avatar}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center">
-      {avatars
-        .slice(0, Math.min(count, 4))
-        .map((avatar, index) => (
-          <span
-            key={`${avatar}-${index}`}
-            className={`
-              flex h-6 w-6
-              items-center justify-center
-              rounded-full
-              border-2 border-[#111214]
-              text-[7px]
-              font-bold
+      {visibleMembers.map(
+        (member, index) => {
+          const memberUser =
+            member.user || member;
 
-              ${index !== 0 ? "-ml-1.5" : ""}
+          const name =
+            memberUser.username ||
+            memberUser.name ||
+            member.username ||
+            "User";
 
-              ${avatarStyles[index]}
-            `}
-          >
-            {avatar}
-          </span>
-        ))}
+          const avatar =
+            memberUser.avatar ||
+            member.avatar;
 
-      {count > 4 && (
+          return (
+            <div
+              key={
+                memberUser._id ||
+                member.userId ||
+                index
+              }
+              className={
+                index !== 0
+                  ? "-ml-2"
+                  : ""
+              }
+            >
+              <UserAvatar
+                name={name}
+                avatar={avatar}
+              />
+            </div>
+          );
+        }
+      )}
+
+      {members.length > 4 && (
         <span
           className="
-            -ml-1.5
-            flex h-6 w-6
-            items-center justify-center
+            -ml-2
+            flex
+            h-7
+            w-7
+            items-center
+            justify-center
             rounded-full
-            border-2 border-[#111214]
+            border-2
+            border-[#111214]
             bg-[#252629]
-            text-[7px]
+            text-[8px]
             font-semibold
             text-zinc-400
           "
         >
-          +{count - 4}
+          +{members.length - 4}
         </span>
       )}
     </div>
   );
 };
 
-/* =========================================================
-   ROLE BADGE
-========================================================= */
-
 const RoleBadge = ({ role }) => {
   const normalizedRole =
     role?.toLowerCase() || "viewer";
 
-  const isEditor =
-    normalizedRole === "editor" ||
-    normalizedRole === "edit";
-
-  if (isEditor) {
+  if (normalizedRole === "editor") {
     return (
       <span
         className="
@@ -140,7 +299,6 @@ const RoleBadge = ({ role }) => {
         "
       >
         <Pencil size={10} />
-
         Editor
       </span>
     );
@@ -164,39 +322,35 @@ const RoleBadge = ({ role }) => {
       "
     >
       <Eye size={10} />
-
       Viewer
     </span>
   );
 };
 
-/* =========================================================
-   SHARED WORKSPACE CARD
-========================================================= */
-
-const SharedWorkspaceCard = ({ workspace }) => {
+const SharedWorkspaceCard = ({
+  workspace,
+}) => {
   const navigate = useNavigate();
 
   const language =
     workspace.language || "Blank";
 
   const languageInfo =
-    languageStyles[language] ||
-    languageStyles.Blank;
+    getLanguageInfo(language);
 
-  const collaborators =
+  const role =
+    getWorkspaceRole(workspace);
+
+  const membersCount =
     workspace.members?.length || 1;
 
   const ownerName =
-    workspace.owner?.name ||
-    workspace.createdBy?.name ||
-    workspace.ownerName ||
-    "Unknown user";
+    getOwnerName(workspace);
 
-  const role =
-    workspace.role ||
-    workspace.memberRole ||
-    "viewer";
+  const updatedAt =
+    workspace.updatedAt ||
+    workspace.lastOpenedAt ||
+    workspace.createdAt;
 
   const openWorkspace = () => {
     navigate(
@@ -210,8 +364,9 @@ const SharedWorkspaceCard = ({ workspace }) => {
         group
         relative
         flex
-        min-h-[255px]
+        min-h-[285px]
         flex-col
+        overflow-hidden
         rounded-xl
         border
         border-white/[0.075]
@@ -225,9 +380,26 @@ const SharedWorkspaceCard = ({ workspace }) => {
         hover:bg-[#141517]
       "
     >
-      {/* =================================================
-          TOP
-      ================================================= */}
+      {/* subtle top accent */}
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          left-0
+          right-0
+          top-0
+          h-px
+          bg-gradient-to-r
+          from-transparent
+          via-[#dc9458]/20
+          to-transparent
+          opacity-0
+          transition-opacity
+          duration-200
+          group-hover:opacity-100
+        "
+      />
 
       <div
         className="
@@ -236,25 +408,22 @@ const SharedWorkspaceCard = ({ workspace }) => {
           justify-between
         "
       >
-        {/* Language */}
-
         <div
           className={`
-            flex h-10 w-10
+            flex
+            h-10
+            w-10
             items-center
             justify-center
             rounded-lg
             font-mono
             text-[9px]
             font-semibold
-
             ${languageInfo.className}
           `}
         >
           {languageInfo.short}
         </div>
-
-        {/* Shared indicator */}
 
         <div
           className="
@@ -273,14 +442,9 @@ const SharedWorkspaceCard = ({ workspace }) => {
           "
         >
           <Users size={10} />
-
           Shared
         </div>
       </div>
-
-      {/* =================================================
-          WORKSPACE INFO
-      ================================================= */}
 
       <div className="mt-5">
         <div
@@ -292,6 +456,7 @@ const SharedWorkspaceCard = ({ workspace }) => {
         >
           <h3
             className="
+              min-w-0
               truncate
               text-[15px]
               font-semibold
@@ -318,6 +483,7 @@ const SharedWorkspaceCard = ({ workspace }) => {
           className="
             mt-1.5
             min-h-[32px]
+            line-clamp-2
             text-[11px]
             leading-4
             text-zinc-600
@@ -328,10 +494,6 @@ const SharedWorkspaceCard = ({ workspace }) => {
         </p>
       </div>
 
-      {/* =================================================
-          OWNER
-      ================================================= */}
-
       <div
         className="
           mt-4
@@ -340,20 +502,13 @@ const SharedWorkspaceCard = ({ workspace }) => {
           gap-2.5
         "
       >
-        <div
-          className="
-            flex
-            h-7
-            w-7
-            items-center
-            justify-center
-            rounded-full
-            bg-[#252629]
-            text-zinc-400
-          "
-        >
-          <UserRound size={12} />
-        </div>
+        <UserAvatar
+          name={ownerName}
+          avatar={
+            workspace.owner?.avatar ||
+            workspace.createdBy?.avatar
+          }
+        />
 
         <div className="min-w-0">
           <p
@@ -380,10 +535,6 @@ const SharedWorkspaceCard = ({ workspace }) => {
         </div>
       </div>
 
-      {/* =================================================
-          DETAILS
-      ================================================= */}
-
       <div className="mt-auto pt-5">
         <div
           className="
@@ -395,9 +546,9 @@ const SharedWorkspaceCard = ({ workspace }) => {
             pt-4
           "
         >
-          <div className="flex items-center gap-2">
-            <AvatarStack
-              count={collaborators}
+          <div className="flex items-center gap-2.5">
+            <MemberStack
+              workspace={workspace}
             />
 
             <span
@@ -406,8 +557,8 @@ const SharedWorkspaceCard = ({ workspace }) => {
                 text-zinc-600
               "
             >
-              {collaborators}{" "}
-              {collaborators === 1
+              {membersCount}{" "}
+              {membersCount === 1
                 ? "member"
                 : "members"}
             </span>
@@ -415,10 +566,6 @@ const SharedWorkspaceCard = ({ workspace }) => {
 
           <RoleBadge role={role} />
         </div>
-
-        {/* =================================================
-            UPDATED + OPEN
-        ================================================= */}
 
         <div
           className="
@@ -432,14 +579,16 @@ const SharedWorkspaceCard = ({ workspace }) => {
             className="
               flex
               items-center
-              gap-1
+              gap-1.5
               text-[9px]
               text-zinc-700
             "
           >
             <Clock3 size={11} />
 
-            Recently updated
+            {formatUpdatedAt(
+              updatedAt
+            )}
           </span>
 
           <button
@@ -467,7 +616,6 @@ const SharedWorkspaceCard = ({ workspace }) => {
             "
           >
             Open
-
             <ExternalLink size={11} />
           </button>
         </div>
@@ -475,10 +623,6 @@ const SharedWorkspaceCard = ({ workspace }) => {
     </article>
   );
 };
-
-/* =========================================================
-   SHARED WITH ME PAGE
-========================================================= */
 
 const SharedWithMePage = () => {
   const {
@@ -494,16 +638,12 @@ const SharedWithMePage = () => {
   const [roleFilter, setRoleFilter] =
     useState("All");
 
-  /* =======================================================
-     FILTER
-  ======================================================= */
-
   const filteredWorkspaces = useMemo(() => {
+    const searchValue =
+      search.toLowerCase().trim();
+
     return sharedWorkspaces.filter(
       (workspace) => {
-        const searchValue =
-          search.toLowerCase().trim();
-
         const name =
           workspace.name?.toLowerCase() ||
           "";
@@ -513,26 +653,32 @@ const SharedWithMePage = () => {
           "";
 
         const owner =
-          workspace.owner?.name?.toLowerCase() ||
-          workspace.createdBy?.name?.toLowerCase() ||
+          workspace.owner?.username
+            ?.toLowerCase() ||
+          workspace.owner?.name
+            ?.toLowerCase() ||
+          workspace.createdBy?.username
+            ?.toLowerCase() ||
+          workspace.createdBy?.name
+            ?.toLowerCase() ||
           workspace.ownerName?.toLowerCase() ||
           "";
 
         const matchesSearch =
+          !searchValue ||
           name.includes(searchValue) ||
           description.includes(searchValue) ||
           owner.includes(searchValue);
 
         const role =
-          (
-            workspace.role ||
-            workspace.memberRole ||
-            "viewer"
-          ).toLowerCase();
+          getWorkspaceRole(
+            workspace
+          );
 
         const matchesRole =
           roleFilter === "All" ||
-          role === roleFilter.toLowerCase();
+          role ===
+            roleFilter.toLowerCase();
 
         return (
           matchesSearch &&
@@ -546,9 +692,21 @@ const SharedWithMePage = () => {
     roleFilter,
   ]);
 
-  /* =======================================================
-     LOADING
-  ======================================================= */
+  const editorCount =
+    sharedWorkspaces.filter(
+      (workspace) =>
+        getWorkspaceRole(
+          workspace
+        ) === "editor"
+    ).length;
+
+  const viewerCount =
+    sharedWorkspaces.filter(
+      (workspace) =>
+        getWorkspaceRole(
+          workspace
+        ) === "viewer"
+    ).length;
 
   if (isLoading) {
     return (
@@ -654,7 +812,8 @@ const SharedWithMePage = () => {
                 text-zinc-600
               "
             >
-              {error?.response?.data?.message ||
+              {error?.response?.data
+                ?.message ||
                 "Something went wrong."}
             </p>
           </div>
@@ -662,10 +821,6 @@ const SharedWithMePage = () => {
       </main>
     );
   }
-
-  /* =======================================================
-     MAIN UI
-  ======================================================= */
 
   return (
     <main
@@ -690,10 +845,6 @@ const SharedWithMePage = () => {
             max-w-[1280px]
           "
         >
-          {/* =================================================
-              HEADER
-          ================================================= */}
-
           <section
             className="
               mb-8
@@ -774,7 +925,7 @@ const SharedWithMePage = () => {
               sm:grid-cols-3
             "
           >
-            {/* TOTAL SHARED */}
+            {/* TOTAL */}
 
             <div
               className="
@@ -870,17 +1021,7 @@ const SharedWithMePage = () => {
                   text-zinc-200
                 "
               >
-                {
-                  sharedWorkspaces.filter(
-                    (workspace) =>
-                      (
-                        workspace.role ||
-                        workspace.memberRole ||
-                        "viewer"
-                      ).toLowerCase() ===
-                      "editor"
-                  ).length
-                }
+                {editorCount}
               </p>
 
               <p
@@ -935,17 +1076,7 @@ const SharedWithMePage = () => {
                   text-zinc-200
                 "
               >
-                {
-                  sharedWorkspaces.filter(
-                    (workspace) =>
-                      (
-                        workspace.role ||
-                        workspace.memberRole ||
-                        "viewer"
-                      ).toLowerCase() ===
-                      "viewer"
-                  ).length
-                }
+                {viewerCount}
               </p>
 
               <p
@@ -960,10 +1091,6 @@ const SharedWithMePage = () => {
             </div>
           </section>
 
-          {/* =================================================
-              SEARCH + FILTER
-          ================================================= */}
-
           <section className="mb-6">
             <div
               className="
@@ -973,8 +1100,6 @@ const SharedWithMePage = () => {
                 sm:flex-row
               "
             >
-              {/* SEARCH */}
-
               <div
                 className="
                   group
@@ -1000,9 +1125,9 @@ const SharedWithMePage = () => {
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setSearch(
-                      e.target.value
+                      event.target.value
                     )
                   }
                   placeholder="Search shared workspaces..."
@@ -1030,13 +1155,11 @@ const SharedWithMePage = () => {
                 />
               </div>
 
-              {/* ROLE FILTER */}
-
               <select
                 value={roleFilter}
-                onChange={(e) =>
+                onChange={(event) =>
                   setRoleFilter(
-                    e.target.value
+                    event.target.value
                   )
                 }
                 className="
@@ -1072,8 +1195,6 @@ const SharedWithMePage = () => {
                 </option>
               </select>
             </div>
-
-            {/* RESULT COUNT */}
 
             <div
               className="
@@ -1117,10 +1238,6 @@ const SharedWithMePage = () => {
             </div>
           </section>
 
-          {/* =================================================
-              WORKSPACE GRID
-          ================================================= */}
-
           {filteredWorkspaces.length > 0 ? (
             <section
               className="
@@ -1140,10 +1257,6 @@ const SharedWithMePage = () => {
               )}
             </section>
           ) : (
-            /* =================================================
-               EMPTY STATE
-            ================================================= */
-
             <section
               className="
                 flex
@@ -1172,7 +1285,12 @@ const SharedWithMePage = () => {
                   text-[#dc9458]
                 "
               >
-                <Users size={18} />
+                {sharedWorkspaces.length ===
+                0 ? (
+                  <FolderGit2 size={18} />
+                ) : (
+                  <Search size={18} />
+                )}
               </div>
 
               <h3
@@ -1191,7 +1309,7 @@ const SharedWithMePage = () => {
               <p
                 className="
                   mt-1
-                  max-w-[300px]
+                  max-w-[320px]
                   text-[10px]
                   leading-4
                   text-zinc-600

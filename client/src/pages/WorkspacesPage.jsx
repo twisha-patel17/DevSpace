@@ -12,6 +12,7 @@ import {
   Trash2,
   Pencil,
   ArrowRight,
+  X,
 } from "lucide-react";
 
 import {
@@ -31,12 +32,17 @@ const WorkspacesPage = () => {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
+
   const [showCreateModal, setShowCreateModal] =
     useState(false);
+
   const [showEditModal, setShowEditModal] =
     useState(false);
 
   const [selectedWorkspace, setSelectedWorkspace] =
+    useState(null);
+
+  const [openMenuId, setOpenMenuId] =
     useState(null);
 
   const [workspaceName, setWorkspaceName] =
@@ -122,6 +128,12 @@ const WorkspacesPage = () => {
         .includes(query);
     });
 
+  const resetWorkspaceForm = () => {
+    setWorkspaceName("");
+    setWorkspaceDescription("");
+    setWorkspaceVisibility("private");
+  };
+
   const handleCreateWorkspace = async (
     event
   ) => {
@@ -144,10 +156,7 @@ const WorkspacesPage = () => {
         );
 
       setShowCreateModal(false);
-
-      setWorkspaceName("");
-      setWorkspaceDescription("");
-      setWorkspaceVisibility("private");
+      resetWorkspaceForm();
 
       if (workspace?._id) {
         navigate(
@@ -165,6 +174,8 @@ const WorkspacesPage = () => {
   const openEditModal = (
     workspace
   ) => {
+    setOpenMenuId(null);
+
     setSelectedWorkspace(workspace);
 
     setWorkspaceName(
@@ -213,9 +224,7 @@ const WorkspacesPage = () => {
       setShowEditModal(false);
       setSelectedWorkspace(null);
 
-      setWorkspaceName("");
-      setWorkspaceDescription("");
-      setWorkspaceVisibility("private");
+      resetWorkspaceForm();
     } catch (error) {
       console.error(
         "Failed to update workspace:",
@@ -227,6 +236,8 @@ const WorkspacesPage = () => {
   const handleDeleteWorkspace = async (
     workspace
   ) => {
+    setOpenMenuId(null);
+
     const confirmed =
       window.confirm(
         `Delete workspace "${workspace.name}"? This will also delete all files inside it.`
@@ -251,6 +262,8 @@ const WorkspacesPage = () => {
   const openWorkspace = (
     workspace
   ) => {
+    setOpenMenuId(null);
+
     navigate(
       `/workspaces/${workspace._id}`
     );
@@ -275,10 +288,24 @@ const WorkspacesPage = () => {
     );
   };
 
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    resetWorkspaceForm();
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setSelectedWorkspace(null);
+    resetWorkspaceForm();
+  };
+
   const WorkspaceCard = ({
     workspace,
     shared = false,
   }) => {
+    const isMenuOpen =
+      openMenuId === workspace._id;
+
     return (
       <div
         className="group relative rounded-xl border border-zinc-800 bg-[#0d0d0f] p-4 transition hover:border-zinc-700 hover:bg-[#111114]"
@@ -291,13 +318,13 @@ const WorkspacesPage = () => {
           className="w-full text-left"
         >
           <div className="mb-4 flex items-start justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#dc9458]/10 text-[#dc9458]">
               <Folder size={19} />
             </div>
 
             <ArrowRight
               size={16}
-              className="text-zinc-700 transition group-hover:translate-x-0.5 group-hover:text-zinc-400"
+              className="text-zinc-700 transition group-hover:translate-x-0.5 group-hover:text-[#dc9458]"
             />
           </div>
 
@@ -313,6 +340,7 @@ const WorkspacesPage = () => {
           <div className="mt-4 flex items-center gap-3 text-[11px] text-zinc-600">
             <span className="flex items-center gap-1">
               <Clock3 size={12} />
+
               {formatDate(
                 workspace.updatedAt
               )}
@@ -320,12 +348,13 @@ const WorkspacesPage = () => {
 
             <span className="flex items-center gap-1">
               <Users size={12} />
+
               {workspace.members?.length ||
                 0}
             </span>
 
             {shared && (
-              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-400">
+              <span className="rounded-full bg-[#dc9458]/10 px-2 py-0.5 text-[#dc9458]">
                 Shared
               </span>
             )}
@@ -338,41 +367,60 @@ const WorkspacesPage = () => {
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
+
+                setOpenMenuId(
+                  isMenuOpen
+                    ? null
+                    : workspace._id
+                );
               }}
-              className="rounded-md p-1.5 text-zinc-600 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-300 group-hover:opacity-100"
+              className={`rounded-md p-1.5 text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-300 ${
+                isMenuOpen
+                  ? "bg-zinc-800 text-zinc-300"
+                  : "opacity-0 group-hover:opacity-100"
+              }`}
             >
               <MoreHorizontal
                 size={16}
               />
             </button>
 
-            <div className="pointer-events-none absolute right-0 top-8 z-20 hidden w-36 rounded-lg border border-zinc-800 bg-[#111114] p-1 shadow-xl group-focus-within:block">
-              <button
-                type="button"
-                onClick={() =>
-                  openEditModal(
-                    workspace
-                  )
+            {isMenuOpen && (
+              <div
+                className="absolute right-0 top-8 z-20 w-36 rounded-lg border border-zinc-800 bg-[#111114] p-1 shadow-xl"
+                onClick={(event) =>
+                  event.stopPropagation()
                 }
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
               >
-                <Pencil size={13} />
-                Rename
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openEditModal(
+                      workspace
+                    )
+                  }
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+                >
+                  <Pencil size={13} />
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleDeleteWorkspace(
-                    workspace
-                  )
-                }
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 size={13} />
-                Delete
-              </button>
-            </div>
+                  Edit
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDeleteWorkspace(
+                      workspace
+                    )
+                  }
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-400 transition hover:bg-red-500/10"
+                >
+                  <Trash2 size={13} />
+
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -431,13 +479,18 @@ const WorkspacesPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-200">
-
+    <div
+      className="min-h-screen bg-[#09090b] text-zinc-200"
+      onClick={() => {
+        if (openMenuId) {
+          setOpenMenuId(null);
+        }
+      }}
+    >
       {/* Header */}
 
       <header className="border-b border-zinc-800 bg-[#0d0d0f]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-
           <div>
             <h1 className="text-xl font-semibold text-white">
               Workspaces
@@ -451,26 +504,27 @@ const WorkspacesPage = () => {
 
           <button
             type="button"
-            onClick={() =>
-              setShowCreateModal(true)
-            }
-            className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500"
+            onClick={(event) => {
+              event.stopPropagation();
+
+              resetWorkspaceForm();
+              setShowCreateModal(true);
+            }}
+            className="flex items-center gap-2 rounded-lg bg-[#dc9458] px-4 py-2.5 text-sm font-medium text-[#17120d] transition hover:bg-[#e3a06a]"
           >
             <Plus size={16} />
+
             New Workspace
           </button>
-
         </div>
       </header>
 
       {/* Content */}
 
       <main className="mx-auto max-w-7xl px-6 py-8">
-
         {/* Search */}
 
         <div className="mb-8 flex items-center gap-3">
-
           <div className="relative max-w-md flex-1">
             <Search
               size={16}
@@ -486,18 +540,15 @@ const WorkspacesPage = () => {
                 )
               }
               placeholder="Search workspaces..."
-              className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] py-2.5 pl-9 pr-3 text-sm text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-violet-500/50"
+              className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] py-2.5 pl-9 pr-3 text-sm text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
             />
           </div>
-
         </div>
 
         {/* Recent */}
 
         <section className="mb-10">
-
           <div className="mb-4 flex items-center justify-between">
-
             <div>
               <h2 className="text-sm font-semibold text-zinc-200">
                 Recent
@@ -507,7 +558,6 @@ const WorkspacesPage = () => {
                 Workspaces you've opened recently.
               </p>
             </div>
-
           </div>
 
           <WorkspaceGrid
@@ -517,15 +567,12 @@ const WorkspacesPage = () => {
             loading={recentLoading}
             emptyMessage="No recently opened workspaces."
           />
-
         </section>
 
         {/* My Workspaces */}
 
         <section className="mb-10">
-
           <div className="mb-4 flex items-center justify-between">
-
             <div>
               <h2 className="text-sm font-semibold text-zinc-200">
                 My Workspaces
@@ -544,7 +591,6 @@ const WorkspacesPage = () => {
                 ? "s"
                 : ""}
             </span>
-
           </div>
 
           <WorkspaceGrid
@@ -556,15 +602,12 @@ const WorkspacesPage = () => {
             }
             emptyMessage="You haven't created any workspaces yet."
           />
-
         </section>
 
         {/* Shared */}
 
         <section>
-
           <div className="mb-4">
-
             <h2 className="text-sm font-semibold text-zinc-200">
               Shared With Me
             </h2>
@@ -573,7 +616,6 @@ const WorkspacesPage = () => {
               Workspaces other people have
               shared with you.
             </p>
-
           </div>
 
           <WorkspaceGrid
@@ -584,27 +626,43 @@ const WorkspacesPage = () => {
             emptyMessage="No workspaces have been shared with you."
             shared
           />
-
         </section>
-
       </main>
 
       {/* Create Modal */}
 
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={closeCreateModal}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">
+                  Create Workspace
+                </h2>
 
-          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl">
+                <p className="mt-1 text-xs text-zinc-500">
+                  Create a new environment for
+                  your project.
+                </p>
+              </div>
 
-            <div className="mb-6">
-              <h2 className="text-base font-semibold text-white">
-                Create Workspace
-              </h2>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                Create a new environment for
-                your project.
-              </p>
+              <button
+                type="button"
+                onClick={
+                  closeCreateModal
+                }
+                className="rounded-md p-1.5 text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-300"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             <form
@@ -613,7 +671,6 @@ const WorkspacesPage = () => {
               }
               className="space-y-4"
             >
-
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-400">
                   Name
@@ -628,7 +685,7 @@ const WorkspacesPage = () => {
                     )
                   }
                   placeholder="My Project"
-                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50"
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 />
               </div>
 
@@ -648,7 +705,7 @@ const WorkspacesPage = () => {
                   }
                   placeholder="What are you building?"
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50"
+                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 />
               </div>
 
@@ -666,7 +723,7 @@ const WorkspacesPage = () => {
                       event.target.value
                     )
                   }
-                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 >
                   <option value="private">
                     Private
@@ -679,11 +736,10 @@ const WorkspacesPage = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowCreateModal(false)
+                  onClick={
+                    closeCreateModal
                   }
                   className="rounded-lg border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
                 >
@@ -696,37 +752,51 @@ const WorkspacesPage = () => {
                     !workspaceName.trim() ||
                     createWorkspaceMutation.isPending
                   }
-                  className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-[#dc9458] px-4 py-2.5 text-sm font-medium text-[#17120d] transition hover:bg-[#e3a06a] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {createWorkspaceMutation.isPending
                     ? "Creating..."
                     : "Create Workspace"}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
 
       {/* Edit Modal */}
 
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={closeEditModal}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">
+                  Edit Workspace
+                </h2>
 
-          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#111114] p-6 shadow-2xl">
+                <p className="mt-1 text-xs text-zinc-500">
+                  Update your workspace details.
+                </p>
+              </div>
 
-            <div className="mb-6">
-              <h2 className="text-base font-semibold text-white">
-                Edit Workspace
-              </h2>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                Update your workspace details.
-              </p>
+              <button
+                type="button"
+                onClick={
+                  closeEditModal
+                }
+                className="rounded-md p-1.5 text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-300"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             <form
@@ -735,7 +805,6 @@ const WorkspacesPage = () => {
               }
               className="space-y-4"
             >
-
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-400">
                   Name
@@ -749,7 +818,7 @@ const WorkspacesPage = () => {
                       event.target.value
                     )
                   }
-                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 />
               </div>
 
@@ -768,7 +837,7 @@ const WorkspacesPage = () => {
                     )
                   }
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                  className="w-full resize-none rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 />
               </div>
 
@@ -786,7 +855,7 @@ const WorkspacesPage = () => {
                       event.target.value
                     )
                   }
-                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                  className="w-full rounded-lg border border-zinc-800 bg-[#0d0d0f] px-3 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#dc9458]/50 focus:ring-1 focus:ring-[#dc9458]/10"
                 >
                   <option value="private">
                     Private
@@ -799,17 +868,11 @@ const WorkspacesPage = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowEditModal(
-                      false
-                    );
-                    setSelectedWorkspace(
-                      null
-                    );
-                  }}
+                  onClick={
+                    closeEditModal
+                  }
                   className="rounded-lg border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
                 >
                   Cancel
@@ -821,22 +884,17 @@ const WorkspacesPage = () => {
                     !workspaceName.trim() ||
                     updateWorkspaceMutation.isPending
                   }
-                  className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-[#dc9458] px-4 py-2.5 text-sm font-medium text-[#17120d] transition hover:bg-[#e3a06a] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {updateWorkspaceMutation.isPending
                     ? "Saving..."
                     : "Save Changes"}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
-
     </div>
   );
 };
