@@ -1,16 +1,25 @@
 node_modules/
+
 .env
+
 .env.*
+
 !.env.example
 
 dist/
+
 build/
+
 coverage/
 
 .vscode/
+
 .idea/
 
 *.log
 
 .DS_Store
+
 Thumbs.db
+
+piston-data/

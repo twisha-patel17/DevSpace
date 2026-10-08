@@ -61,6 +61,9 @@ const executeCode = async ({
     output: result.run?.output || "",
     exitCode: result.run?.code ?? null,
     signal: result.run?.signal || null,
+
+    compileError: result.compile?.stderr || "",
+    compileOutput: result.compile?.output || "",
   };
 };
 

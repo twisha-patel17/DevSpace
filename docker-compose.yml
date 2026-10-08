@@ -2,7 +2,6 @@ services:
   server:
     build:
       context: ./server
-    container_name: devspace-server
     ports:
       - "5000:5000"
     env_file:
@@ -17,7 +16,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: devspace-redis
     ports:
       - "6379:6379"
     volumes:
@@ -26,10 +24,11 @@ services:
 
   piston:
     image: ghcr.io/engineer-man/piston
-    container_name: devspace-piston
     privileged: true
     ports:
       - "2000:2000"
+    volumes:
+      - ./piston-data:/piston
     restart: unless-stopped
 
 volumes:

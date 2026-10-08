@@ -2,7 +2,7 @@ const { executeCode } = require("../services/execution.service");
 
 const runCodeController = async (req, res) => {
   try {
-    const { language, code, stdin } = req.body;
+    const { language, code, stdin = "" } = req.body;
 
     if (!language) {
       return res.status(400).json({
@@ -10,7 +10,7 @@ const runCodeController = async (req, res) => {
       });
     }
 
-    if (!code) {
+    if (typeof code !== "string" || !code.trim()) {
       return res.status(400).json({
         message: "Code is required",
       });
@@ -32,11 +32,34 @@ const runCodeController = async (req, res) => {
       error.response?.data || error.message
     );
 
+    if (error.response?.status === 400) {
+      return res.status(400).json({
+        message: "Invalid code execution request",
+        error:
+          error.response?.data?.message ||
+          error.response?.data ||
+          error.message,
+      });
+    }
+
+    if (error.code === "ECONNABORTED") {
+      return res.status(504).json({
+        message: "Code execution timed out",
+      });
+    }
+
+    if (
+      error.code === "ECONNREFUSED" ||
+      error.code === "ENOTFOUND"
+    ) {
+      return res.status(503).json({
+        message: "Code execution service is unavailable",
+      });
+    }
+
     return res.status(500).json({
       message: "Code execution failed",
-      error:
-        error.response?.data?.message ||
-        error.message,
+      error: error.message,
     });
   }
 };
