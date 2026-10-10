@@ -1,3 +1,4 @@
+
 const {
   createWorkspace,
   getUserWorkspaces,
@@ -7,28 +8,38 @@ const {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
-
   getWorkspaceFiles,
   createWorkspaceFile,
   updateWorkspaceFile,
   deleteWorkspaceFile,
-
   addWorkspaceMember,
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
 } = require("../services/workspace.service");
 
+const mongoose = require("mongoose");
+
+// Broadcast successful file-tree changes to workspace collaborators.
+const emitWorkspaceFilesChanged = (req, workspaceId, payload) => {
+  const io = req.app.get("io");
+
+  if (!io) {
+    console.error("Socket.IO instance is unavailable");
+    return;
+  }
+
+  io.to(`workspace:${workspaceId}`).emit("workspace:files-changed", {
+    workspaceId: String(workspaceId),
+    changedBy: req.user.userId,
+    ...payload,
+  });
+};
+
 const createWorkspaceController = async (req, res) => {
   try {
-    const {
-      name,
-      description,
-      template,
-      language,
-      visibility,
-    } = req.body;
+    const { name, description, template, language, visibility } = req.body;
 
-    if (!name || !name.trim()) {
+    if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
         message: "Workspace name is required",
       });
@@ -58,13 +69,9 @@ const createWorkspaceController = async (req, res) => {
 
 const getWorkspacesController = async (req, res) => {
   try {
-    const workspaces = await getUserWorkspaces(
-      req.user.userId
-    );
+    const workspaces = await getUserWorkspaces(req.user.userId);
 
-    return res.status(200).json({
-      workspaces,
-    });
+    return res.status(200).json({ workspaces });
   } catch (error) {
     console.error("Get workspaces error:", error);
 
@@ -76,41 +83,28 @@ const getWorkspacesController = async (req, res) => {
 
 const getRecentWorkspacesController = async (req, res) => {
   try {
-    const workspaces = await getRecentWorkspaces(
-      req.user.userId
-    );
+    const workspaces = await getRecentWorkspaces(req.user.userId);
 
-    return res.status(200).json({
-      workspaces,
-    });
+    return res.status(200).json({ workspaces });
   } catch (error) {
-    console.error(
-      "Get recent workspaces error:",
-      error
-    );
+    console.error("Get recent workspaces error:", error);
 
     return res.status(500).json({
-      message: "Failed to fetch recent workspaces",
+      message: "Failed to fetch workspaces",
     });
   }
 };
+
 const getSharedWorkspacesController = async (req, res) => {
   try {
-    const workspaces = await getSharedWorkspaces(
-      req.user.userId
-    );
+    const workspaces = await getSharedWorkspaces(req.user.userId);
 
-    return res.status(200).json({
-      workspaces,
-    });
+    return res.status(200).json({ workspaces });
   } catch (error) {
-    console.error(
-      "Get shared workspaces error:",
-      error
-    );
+    console.error("Get shared workspaces error:", error);
 
     return res.status(500).json({
-      message: "Failed to fetch shared workspaces",
+      message: "Failed to fetch workspaces",
     });
   }
 };
@@ -130,9 +124,7 @@ const getWorkspaceController = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
-      workspace,
-    });
+    return res.status(200).json({ workspace });
   } catch (error) {
     console.error("Get workspace error:", error);
 
@@ -145,16 +137,11 @@ const getWorkspaceController = async (req, res) => {
 const updateWorkspaceController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
-
-    const {
-      name,
-      description,
-      visibility,
-    } = req.body;
+    const { name, description, visibility } = req.body;
 
     if (
       name !== undefined &&
-      !name.trim()
+      (typeof name !== "string" || !name.trim())
     ) {
       return res.status(400).json({
         message: "Workspace name cannot be empty",
@@ -180,8 +167,7 @@ const updateWorkspaceController = async (req, res) => {
 
     if (!workspace) {
       return res.status(404).json({
-        message:
-          "Workspace not found or you are not the owner",
+        message: "Workspace not found or you are not the owner",
       });
     }
 
@@ -197,6 +183,7 @@ const updateWorkspaceController = async (req, res) => {
     });
   }
 };
+
 const deleteWorkspaceController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -208,8 +195,7 @@ const deleteWorkspaceController = async (req, res) => {
 
     if (!workspace) {
       return res.status(404).json({
-        message:
-          "Workspace not found or you are not the owner",
+        message: "Workspace not found or you are not the owner",
       });
     }
 
@@ -225,10 +211,7 @@ const deleteWorkspaceController = async (req, res) => {
   }
 };
 
-const markWorkspaceOpenedController = async (
-  req,
-  res
-) => {
+const markWorkspaceOpenedController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
 
@@ -248,10 +231,7 @@ const markWorkspaceOpenedController = async (
       workspace,
     });
   } catch (error) {
-    console.error(
-      "Mark workspace opened error:",
-      error
-    );
+    console.error("Mark workspace opened error:", error);
 
     return res.status(500).json({
       message: "Failed to update workspace",
@@ -259,12 +239,15 @@ const markWorkspaceOpenedController = async (
   }
 };
 
-const getWorkspaceFilesController = async (
-  req,
-  res
-) => {
+const getWorkspaceFilesController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
+
+    if (!mongoose.isValidObjectId(workspaceId)) {
+      return res.status(400).json({
+        message: "Invalid workspace ID",
+      });
+    }
 
     const files = await getWorkspaceFiles({
       workspaceId,
@@ -277,14 +260,9 @@ const getWorkspaceFilesController = async (
       });
     }
 
-    return res.status(200).json({
-      files,
-    });
+    return res.status(200).json({ files });
   } catch (error) {
-    console.error(
-      "Get workspace files error:",
-      error
-    );
+    console.error("Get workspace files error:", error);
 
     return res.status(500).json({
       message: "Failed to fetch workspace files",
@@ -292,141 +270,30 @@ const getWorkspaceFilesController = async (
   }
 };
 
-const createWorkspaceFileController = async (
-  req,
-  res
-) => {
+const createWorkspaceFileController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
+    const { name, language, content, path, type, parent } = req.body;
 
-    const {
-      name,
-      language,
-      content,
-      path,
-      type,
-      parent,
-    } = req.body;
-
-    if (!name || !name.trim()) {
+    if (!mongoose.isValidObjectId(workspaceId)) {
       return res.status(400).json({
-        message: "File or folder name is required",
+        message: "Invalid workspace ID",
       });
     }
 
-    const fileType = type || "file";
-
-    if (!["file", "folder"].includes(fileType)) {
+    if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
-        message: "Invalid file type",
+        message: "A valid file or folder name is required",
       });
     }
 
     if (
-      fileType === "file" &&
-      language !== undefined &&
-      typeof language !== "string"
+      path !== undefined &&
+      path !== null &&
+      typeof path !== "string"
     ) {
       return res.status(400).json({
-        message: "Invalid file language",
-      });
-    }
-
-    const file = await createWorkspaceFile({
-      workspaceId,
-      userId: req.user.userId,
-
-      name: name.trim(),
-
-      language:
-        fileType === "file"
-          ? language?.trim() || null
-          : null,
-
-      content:
-        fileType === "file"
-          ? content || ""
-          : "",
-
-      path: path?.trim() || name.trim(),
-      type: fileType,
-      parent: parent || null,
-    });
-
-    if (!file) {
-      return res.status(404).json({
-        message: "Workspace not found",
-      });
-    }
-
-    if (file.forbidden) {
-      return res.status(403).json({
-        message:
-          "You do not have permission to create files",
-      });
-    }
-
-    return res.status(201).json({
-      message:
-        fileType === "folder"
-          ? "Folder created successfully"
-          : "File created successfully",
-      file,
-    });
-  } catch (error) {
-    console.error(
-      "Create workspace file error:",
-      error
-    );
-
-    if (error.code === 11000) {
-      return res.status(409).json({
-        message:
-          "A file or folder with this path already exists",
-      });
-    }
-
-    return res.status(500).json({
-      message: "Failed to create file",
-    });
-  }
-};
-
-const updateWorkspaceFileController = async (
-  req,
-  res
-) => {
-  try {
-    const {
-      workspaceId,
-      fileId,
-    } = req.params;
-
-    const {
-      name,
-      language,
-      content,
-      path,
-    } = req.body;
-
-    if (
-      name !== undefined &&
-      (
-        typeof name !== "string" ||
-        !name.trim()
-      )
-    ) {
-      return res.status(400).json({
-        message: "File or folder name cannot be empty",
-      });
-    }
-
-    if (
-      language !== undefined &&
-      typeof language !== "string"
-    ) {
-      return res.status(400).json({
-        message: "Invalid file language",
+        message: "File path must be a string",
       });
     }
 
@@ -435,92 +302,233 @@ const updateWorkspaceFileController = async (
       typeof content !== "string"
     ) {
       return res.status(400).json({
-        message: "Invalid file content",
+        message: "File content must be a string",
       });
     }
 
     if (
-      path !== undefined &&
-      (
-        typeof path !== "string" ||
-        !path.trim()
-      )
+      language !== undefined &&
+      language !== null &&
+      typeof language !== "string"
     ) {
       return res.status(400).json({
-        message: "File path cannot be empty",
+        message: "File language must be a string",
       });
     }
 
-    const file = await updateWorkspaceFile({
+    if (
+      type !== undefined &&
+      !["file", "folder"].includes(type)
+    ) {
+      return res.status(400).json({
+        message: "Type must be either file or folder",
+      });
+    }
+
+    if (
+      parent !== undefined &&
+      parent !== null &&
+      !mongoose.isValidObjectId(parent)
+    ) {
+      return res.status(400).json({
+        message: "Invalid parent folder ID",
+      });
+    }
+
+    const result = await createWorkspaceFile({
       workspaceId,
       userId: req.user.userId,
-      fileId,
-
-      name:
-        name !== undefined
-          ? name.trim()
-          : undefined,
-
+      name: name.trim(),
       language,
       content,
-
-      path:
-        path !== undefined
-          ? path.trim()
-          : undefined,
+      path: path?.trim() || undefined,
+      type,
+      parent: parent || null,
     });
 
-    if (!file) {
+    if (!result) {
       return res.status(404).json({
         message: "Workspace not found",
       });
     }
 
-    if (file.forbidden) {
+    if (result.forbidden) {
       return res.status(403).json({
-        message:
-          "You do not have permission to modify files",
+        message: "You do not have permission to modify this workspace",
       });
     }
 
-    if (file.fileNotFound) {
-      return res.status(404).json({
-        message: "File not found",
-      });
-    }
+    // Broadcast only after the file has been created successfully.
+    emitWorkspaceFilesChanged(req, workspaceId, {
+      action: "created",
+      fileId: result._id.toString(),
+    });
 
-    return res.status(200).json({
-      message: "File updated successfully",
-      file,
+    return res.status(201).json({
+      message: "File or folder created successfully",
+      file: result,
     });
   } catch (error) {
-    console.error(
-      "Update workspace file error:",
-      error
-    );
-
     if (error.code === 11000) {
       return res.status(409).json({
-        message:
-          "A file or folder with this path already exists",
+        message: "A file or folder already exists at this path",
       });
     }
 
+    const validationErrors = [
+      "Parent folder not found",
+      "File path does not match its name and parent folder",
+      "A valid file or folder name is required",
+      "Invalid file type",
+      "File content must be a string",
+      "File language must be a string",
+    ];
+
+    if (validationErrors.includes(error.message)) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
+    console.error("Create workspace file error:", error);
+
     return res.status(500).json({
-      message: "Failed to update file",
+      message: "Failed to create file or folder",
     });
   }
 };
 
-const deleteWorkspaceFileController = async (
-  req,
-  res
-) => {
+const updateWorkspaceFileController = async (req, res) => {
   try {
-    const {
+    const { workspaceId, fileId } = req.params;
+    const { name, language, content, path } = req.body;
+
+    if (
+      !mongoose.isValidObjectId(workspaceId) ||
+      !mongoose.isValidObjectId(fileId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid workspace ID or file ID",
+      });
+    }
+
+    if (
+      name !== undefined &&
+      (typeof name !== "string" || !name.trim())
+    ) {
+      return res.status(400).json({
+        message: "A valid file or folder name is required",
+      });
+    }
+
+    if (path !== undefined && typeof path !== "string") {
+      return res.status(400).json({
+        message: "File path must be a string",
+      });
+    }
+
+    if (
+      content !== undefined &&
+      typeof content !== "string"
+    ) {
+      return res.status(400).json({
+        message: "File content must be a string",
+      });
+    }
+
+    if (
+      language !== undefined &&
+      language !== null &&
+      typeof language !== "string"
+    ) {
+      return res.status(400).json({
+        message: "File language must be a string",
+      });
+    }
+
+    const result = await updateWorkspaceFile({
       workspaceId,
+      userId: req.user.userId,
       fileId,
-    } = req.params;
+      name: name === undefined ? undefined : name.trim(),
+      language,
+      content,
+      path: path === undefined ? undefined : path.trim(),
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        message: "Workspace not found",
+      });
+    }
+
+    if (result.forbidden) {
+      return res.status(403).json({
+        message: "You do not have permission to modify this workspace",
+      });
+    }
+
+    if (result.fileNotFound) {
+      return res.status(404).json({
+        message: "File or folder not found",
+      });
+    }
+
+    // A rename can affect descendants, so the frontend will refresh the tree.
+    emitWorkspaceFilesChanged(req, workspaceId, {
+      action: "updated",
+      fileId: result._id.toString(),
+    });
+
+    return res.status(200).json({
+      message: "File or folder updated successfully",
+      file: result,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "A file or folder already exists at this path",
+      });
+    }
+
+    const validationErrors = [
+      "A valid file or folder name is required",
+      "File path must be a string",
+      "File content must be a string",
+      "File language must be a string",
+      "Folders cannot contain file content",
+      "Folder paths are managed by their names and parents",
+      "A valid file path is required",
+      "File path must end with the file name",
+      "File path must end with the new file name",
+    ];
+
+    if (validationErrors.includes(error.message)) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
+    console.error("Update workspace file error:", error);
+
+    return res.status(500).json({
+      message: "Failed to update file or folder",
+    });
+  }
+};
+
+const deleteWorkspaceFileController = async (req, res) => {
+  try {
+    const { workspaceId, fileId } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(workspaceId) ||
+      !mongoose.isValidObjectId(fileId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid workspace ID or file ID",
+      });
+    }
 
     const result = await deleteWorkspaceFile({
       workspaceId,
@@ -536,43 +544,41 @@ const deleteWorkspaceFileController = async (
 
     if (result.forbidden) {
       return res.status(403).json({
-        message:
-          "You do not have permission to delete files",
+        message: "You do not have permission to modify this workspace",
       });
     }
 
     if (result.fileNotFound) {
       return res.status(404).json({
-        message: "File not found",
+        message: "File or folder not found",
       });
     }
 
+    // Broadcast after deletion, including descendants of deleted folders.
+    emitWorkspaceFilesChanged(req, workspaceId, {
+      action: "deleted",
+      fileId,
+      fileIds: result.fileIds,
+    });
+
     return res.status(200).json({
-      message: "File deleted successfully",
+      message: "File or folder deleted successfully",
+      deletedCount: result.deletedCount,
+      fileIds: result.fileIds,
     });
   } catch (error) {
-    console.error(
-      "Delete workspace file error:",
-      error
-    );
+    console.error("Delete workspace file error:", error);
 
     return res.status(500).json({
-      message: "Failed to delete file",
+      message: "Failed to delete file or folder",
     });
   }
 };
 
-const addWorkspaceMemberController = async (
-  req,
-  res
-) => {
+const addWorkspaceMemberController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
-
-    const {
-      userId: memberUserId,
-      role,
-    } = req.body;
+    const { userId: memberUserId, role } = req.body;
 
     if (!memberUserId) {
       return res.status(400).json({
@@ -601,8 +607,7 @@ const addWorkspaceMemberController = async (
 
     if (!workspace) {
       return res.status(404).json({
-        message:
-          "Workspace not found or you are not the owner",
+        message: "Workspace not found or you are not the owner",
       });
     }
 
@@ -635,10 +640,7 @@ const addWorkspaceMemberController = async (
       workspace,
     });
   } catch (error) {
-    console.error(
-      "Add workspace member error:",
-      error
-    );
+    console.error("Add workspace member error:", error);
 
     return res.status(500).json({
       message: "Failed to add workspace member",
@@ -646,16 +648,9 @@ const addWorkspaceMemberController = async (
   }
 };
 
-const updateWorkspaceMemberRoleController = async (
-  req,
-  res
-) => {
+const updateWorkspaceMemberRoleController = async (req, res) => {
   try {
-    const {
-      workspaceId,
-      memberUserId,
-    } = req.params;
-
+    const { workspaceId, memberUserId } = req.params;
     const { role } = req.body;
 
     if (!role) {
@@ -679,8 +674,7 @@ const updateWorkspaceMemberRoleController = async (
 
     if (!workspace) {
       return res.status(404).json({
-        message:
-          "Workspace not found or you are not the owner",
+        message: "Workspace not found or you are not the owner",
       });
     }
 
@@ -707,10 +701,7 @@ const updateWorkspaceMemberRoleController = async (
       workspace,
     });
   } catch (error) {
-    console.error(
-      "Update workspace member role error:",
-      error
-    );
+    console.error("Update workspace member role error:", error);
 
     return res.status(500).json({
       message: "Failed to update member role",
@@ -718,15 +709,9 @@ const updateWorkspaceMemberRoleController = async (
   }
 };
 
-const removeWorkspaceMemberController = async (
-  req,
-  res
-) => {
+const removeWorkspaceMemberController = async (req, res) => {
   try {
-    const {
-      workspaceId,
-      memberUserId,
-    } = req.params;
+    const { workspaceId, memberUserId } = req.params;
 
     const result = await removeWorkspaceMember({
       workspaceId,
@@ -736,8 +721,7 @@ const removeWorkspaceMemberController = async (
 
     if (!result) {
       return res.status(404).json({
-        message:
-          "Workspace not found or you are not the owner",
+        message: "Workspace not found or you are not the owner",
       });
     }
 
@@ -757,10 +741,7 @@ const removeWorkspaceMemberController = async (
       message: "Member removed successfully",
     });
   } catch (error) {
-    console.error(
-      "Remove workspace member error:",
-      error
-    );
+    console.error("Remove workspace member error:", error);
 
     return res.status(500).json({
       message: "Failed to remove workspace member",
@@ -777,12 +758,10 @@ module.exports = {
   updateWorkspaceController,
   deleteWorkspaceController,
   markWorkspaceOpenedController,
-
   getWorkspaceFilesController,
   createWorkspaceFileController,
   updateWorkspaceFileController,
   deleteWorkspaceFileController,
-
   addWorkspaceMemberController,
   updateWorkspaceMemberRoleController,
   removeWorkspaceMemberController,

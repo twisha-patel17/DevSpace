@@ -9,6 +9,7 @@ import WorkspacePage from "./pages/WorkspacePage";
 import WorkspacesPage from "./pages/WorkspacesPage";
 import SharedWithMePage from "./pages/SharedWithMePage";
 import RecentPage from "./pages/RecentPage";
+import ProfilePage from "./pages/ProfilePage";
 
 import AppLayout from "./components/layout/AppLayout";
 
@@ -52,6 +53,7 @@ const AppRoutes = () => {
         path="/workspaces/:workspaceId"
         element={<WorkspacePage />}
         />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
     </Routes>
   );

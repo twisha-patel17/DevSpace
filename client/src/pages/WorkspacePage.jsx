@@ -1,4 +1,4 @@
-
+/* eslint-disable react-hooks/refs */
 import {
   useEffect,
   useMemo,
@@ -6,7 +6,6 @@ import {
   useState,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-
 import {
   ArrowLeft,
   Play,
@@ -19,7 +18,6 @@ import {
   Plus,
   X,
 } from "lucide-react";
-
 import Editor from "@monaco-editor/react";
 
 import api from "../api/axios";
@@ -33,7 +31,6 @@ import {
 } from "../api/workspace.api";
 
 import FileTree from "../components/workspace/FileTree";
-
 import socket, { connectSocket } from "../socket";
 
 const getEditorLanguage = (workspace) => {
@@ -41,25 +38,29 @@ const getEditorLanguage = (workspace) => {
 
   if (!language) return "javascript";
 
-  if (language === "js" || language === "javascript") {
-    return "javascript";
-  }
+  const languageMap = {
+    js: "javascript",
+    javascript: "javascript",
+    jsx: "javascript",
+    ts: "typescript",
+    typescript: "typescript",
+    tsx: "typescript",
+    py: "python",
+    python: "python",
+    cpp: "cpp",
+    "c++": "cpp",
+    java: "java",
+    c: "c",
+    go: "go",
+    rust: "rust",
+    html: "html",
+    css: "css",
+    json: "json",
+    markdown: "markdown",
+    md: "markdown",
+  };
 
-  if (language === "jsx") return "javascript";
-  if (language === "ts" || language === "typescript") return "typescript";
-  if (language === "tsx") return "typescript";
-  if (language === "py" || language === "python") return "python";
-  if (language === "java") return "java";
-  if (language === "cpp" || language === "c++") return "cpp";
-  if (language === "c") return "c";
-  if (language === "go") return "go";
-  if (language === "rust") return "rust";
-  if (language === "html") return "html";
-  if (language === "css") return "css";
-  if (language === "json") return "json";
-  if (language === "markdown" || language === "md") return "markdown";
-
-  return language;
+  return languageMap[language] || language;
 };
 
 const getDefaultFileName = (workspace) => {
@@ -148,12 +149,14 @@ const WorkspacePage = () => {
   const isRemoteUpdate = useRef(false);
   const filesRef = useRef(files);
   const activeFileIdRef = useRef(activeFileId);
+  const codeRef = useRef(code);
+  const isDirtyRef = useRef(isDirty);
 
-  // Keep refs synchronized with the latest render.
   // eslint-disable-next-line react-hooks/refs
   filesRef.current = files;
-  // eslint-disable-next-line react-hooks/refs
   activeFileIdRef.current = activeFileId;
+  codeRef.current = code;
+  isDirtyRef.current = isDirty;
 
   const [fileModal, setFileModal] = useState({
     open: false,
@@ -242,10 +245,7 @@ const WorkspacePage = () => {
       setCollaborators((current) =>
         current.map((collaborator) =>
           collaborator.userId === userId
-            ? {
-                ...collaborator,
-                activeFileId: remoteFileId,
-              }
+            ? { ...collaborator, activeFileId: remoteFileId }
             : collaborator
         )
       );
@@ -259,7 +259,6 @@ const WorkspacePage = () => {
 
     connectSocket(accessToken);
 
-    // If already connected, the connect event won't fire again.
     if (socket.connected) {
       joinWorkspace();
     }
@@ -277,19 +276,21 @@ const WorkspacePage = () => {
         "workspace:user-file-changed",
         handleUserFileChanged
       );
-
     };
   }, [workspaceId, accessToken]);
 
   useEffect(() => {
+    if (!workspaceId) return;
+
+    let refreshInProgress = false;
+    let refreshQueued = false;
+
     const handleRemoteFileChange = ({ fileId, content } = {}) => {
       if (!fileId) return;
 
       setFiles((current) =>
         current.map((file) =>
-          file._id === fileId
-            ? { ...file, content }
-            : file
+          file._id === fileId ? { ...file, content } : file
         )
       );
 
@@ -300,74 +301,66 @@ const WorkspacePage = () => {
       }
     };
 
-    const handleRemoteFileCreated = (file) => {
-      if (!file?._id) return;
+    const refreshWorkspaceFiles = async () => {
+      if (refreshInProgress) {
+        refreshQueued = true;
+        return;
+      }
 
-      setFiles((current) => {
-        if (current.some((item) => item._id === file._id)) {
-          return current;
-        }
+      refreshInProgress = true;
 
-        return [...current, file];
-      });
+      try {
+        do {
+          refreshQueued = false;
+
+          const updatedFiles = await getWorkspaceFiles(workspaceId);
+
+          if (!updatedFiles) continue;
+
+          setFiles(updatedFiles);
+
+          const currentActiveId = activeFileIdRef.current;
+
+          const activeStillExists = updatedFiles.some(
+            (file) =>
+              file._id === currentActiveId && file.type === "file"
+          );
+
+          if (activeStillExists) {
+         
+            continue;
+          }
+
+          // The selected file was deleted by another collaborator.
+          const nextFile =
+            updatedFiles.find((file) => file.type === "file") || null;
+
+          activeFileIdRef.current = nextFile?._id || null;
+          setActiveFileId(nextFile?._id || null);
+          setCode(nextFile?.content || "");
+          setIsDirty(false);
+          setOutput("");
+
+          if (nextFile && socket.connected) {
+            socket.emit("file:open", {
+              workspaceId,
+              fileId: nextFile._id,
+            });
+          }
+        } while (refreshQueued);
+      } catch (err) {
+        console.error("Failed to refresh workspace files:", err);
+      } finally {
+        refreshInProgress = false;
+      }
     };
 
-    const handleRemoteFileUpdated = (file) => {
-      if (!file?._id) return;
-
-      const previousFile = filesRef.current.find(
-        (item) => item._id === file._id
-      );
-
-      setFiles((current) =>
-        current.map((item) =>
-          item._id === file._id
-            ? { ...item, ...file }
-            : item
-        )
-      );
-
-      const pathChanged =
-        previousFile && previousFile.path !== file.path;
-
-      if (file.type === "folder" || pathChanged) {
-        getWorkspaceFiles(workspaceId)
-          .then((updatedFiles) => {
-            setFiles(updatedFiles);
-          })
-          .catch((err) => {
-            console.error(
-              "Failed to refresh workspace files:",
-              err
-            );
-          });
+    const handleWorkspaceFilesChanged = (event = {}) => {
+      if (String(event.workspaceId) !== String(workspaceId)) {
+        return;
       }
 
-      if (file._id === activeFileIdRef.current) {
-        setCode(file.content || "");
-      }
-    };
-
-    const handleRemoteFileDeleted = ({
-      fileId,
-      fileIds,
-    } = {}) => {
-      const idsToDelete = fileIds || (fileId ? [fileId] : []);
-
-      if (idsToDelete.length === 0) return;
-
-      setFiles((current) =>
-        current.filter(
-          (file) => !idsToDelete.includes(file._id)
-        )
-      );
-
-      if (idsToDelete.includes(activeFileIdRef.current)) {
-        setActiveFileId(null);
-        setCode("");
-        setIsDirty(false);
-        setOutput("");
-      }
+      refreshWorkspaceFiles();
     };
 
     const handleFileError = ({ message } = {}) => {
@@ -376,16 +369,18 @@ const WorkspacePage = () => {
     };
 
     socket.on("file:changed", handleRemoteFileChange);
-    socket.on("workspace:file-created", handleRemoteFileCreated);
-    socket.on("workspace:file-updated", handleRemoteFileUpdated);
-    socket.on("workspace:file-deleted", handleRemoteFileDeleted);
+    socket.on(
+      "workspace:files-changed",
+      handleWorkspaceFilesChanged
+    );
     socket.on("file:error", handleFileError);
 
     return () => {
       socket.off("file:changed", handleRemoteFileChange);
-      socket.off("workspace:file-created", handleRemoteFileCreated);
-      socket.off("workspace:file-updated", handleRemoteFileUpdated);
-      socket.off("workspace:file-deleted", handleRemoteFileDeleted);
+      socket.off(
+        "workspace:files-changed",
+        handleWorkspaceFilesChanged
+      );
       socket.off("file:error", handleFileError);
     };
   }, [workspaceId]);
@@ -438,33 +433,24 @@ const WorkspacePage = () => {
           if (cancelled) return;
 
           loadedFiles = [defaultFile];
-
-          if (socket.connected) {
-            socket.emit("file:created", {
-              workspaceId,
-              file: defaultFile,
-            });
-          }
         }
+
+        if (cancelled) return;
 
         setFiles(loadedFiles);
 
         const firstFile =
           loadedFiles.find((file) => file.type === "file") || null;
 
-        if (firstFile) {
-          setActiveFileId(firstFile._id);
-          setCode(firstFile.content || "");
+        activeFileIdRef.current = firstFile?._id || null;
+        setActiveFileId(firstFile?._id || null);
+        setCode(firstFile?.content || "");
 
-          if (socket.connected) {
-            socket.emit("file:open", {
-              workspaceId,
-              fileId: firstFile._id,
-            });
-          }
-        } else {
-          setActiveFileId(null);
-          setCode("");
+        if (firstFile && socket.connected) {
+          socket.emit("file:open", {
+            workspaceId,
+            fileId: firstFile._id,
+          });
         }
       } catch (err) {
         if (cancelled) return;
@@ -498,7 +484,7 @@ const WorkspacePage = () => {
     if (!file || file.type === "folder") return;
     if (file._id === activeFileIdRef.current) return;
 
-    if (isDirty) {
+    if (isDirtyRef.current) {
       const shouldSwitch = window.confirm(
         "You have unsaved changes. Switch files anyway?"
       );
@@ -508,6 +494,7 @@ const WorkspacePage = () => {
 
     isRemoteUpdate.current = false;
 
+    activeFileIdRef.current = file._id;
     setActiveFileId(file._id);
     setCode(file.content || "");
     setIsDirty(false);
@@ -520,7 +507,6 @@ const WorkspacePage = () => {
       });
     }
   };
-
   const openCreateFileModal = (parent = null) => {
     setFileModal({
       open: true,
@@ -573,7 +559,11 @@ const WorkspacePage = () => {
         workspaceId,
         fileData: {
           name,
-          path: getFilePath(name, fileModal.parent, filesRef.current),
+          path: getFilePath(
+            name,
+            fileModal.parent,
+            filesRef.current
+          ),
           type,
           parent: fileModal.parent || null,
           language:
@@ -592,16 +582,10 @@ const WorkspacePage = () => {
         return [...current, file];
       });
 
-      if (socket.connected) {
-        socket.emit("file:created", {
-          workspaceId,
-          file,
-        });
-      }
-
       closeFileModal();
 
       if (type === "file") {
+        activeFileIdRef.current = file._id;
         setActiveFileId(file._id);
         setCode(file.content || "");
         setIsDirty(false);
@@ -631,7 +615,6 @@ const WorkspacePage = () => {
 
     try {
       const file = fileModal.file;
-      const oldPath = file.path;
 
       const parentPath = file.parent
         ? filesRef.current.find(
@@ -652,49 +635,9 @@ const WorkspacePage = () => {
         },
       });
 
-      let updatedFiles = filesRef.current.map((item) =>
-        item._id === updatedFile._id
-          ? { ...item, ...updatedFile }
-          : item
-      );
-
-      if (file.type === "folder") {
-        const oldPrefix = oldPath.endsWith("/")
-          ? oldPath
-          : `${oldPath}/`;
-
-        const newPrefix = newPath.endsWith("/")
-          ? newPath
-          : `${newPath}/`;
-
-        updatedFiles = updatedFiles.map((item) => {
-          if (item.path.startsWith(oldPrefix)) {
-            return {
-              ...item,
-              path:
-                newPrefix +
-                item.path.slice(oldPrefix.length),
-            };
-          }
-
-          return item;
-        });
-
-        try {
-          updatedFiles = await getWorkspaceFiles(workspaceId);
-        } catch {
-          // Keep the optimistic state if refreshing fails.
-        }
-      }
+      const updatedFiles = await getWorkspaceFiles(workspaceId);
 
       setFiles(updatedFiles);
-
-      if (socket.connected) {
-        socket.emit("file:updated", {
-          workspaceId,
-          file: updatedFile,
-        });
-      }
 
       closeFileModal();
     } catch (err) {
@@ -721,7 +664,10 @@ const WorkspacePage = () => {
         fileId: file._id,
       });
 
-      const deletedIds = result.deletedFileIds || [file._id];
+      const deletedIds =
+        result.fileIds ||
+        result.deletedFileIds ||
+        [file._id];
 
       setFiles((current) =>
         current.filter(
@@ -737,31 +683,18 @@ const WorkspacePage = () => {
               !deletedIds.includes(item._id)
           ) || null;
 
-        if (nextFile) {
-          setActiveFileId(nextFile._id);
-          setCode(nextFile.content || "");
-
-          if (socket.connected) {
-            socket.emit("file:open", {
-              workspaceId,
-              fileId: nextFile._id,
-            });
-          }
-        } else {
-          setActiveFileId(null);
-          setCode("");
-        }
-
+        activeFileIdRef.current = nextFile?._id || null;
+        setActiveFileId(nextFile?._id || null);
+        setCode(nextFile?.content || "");
         setIsDirty(false);
         setOutput("");
-      }
 
-      if (socket.connected) {
-        socket.emit("file:deleted", {
-          workspaceId,
-          fileId: file._id,
-          fileIds: deletedIds,
-        });
+        if (nextFile && socket.connected) {
+          socket.emit("file:open", {
+            workspaceId,
+            fileId: nextFile._id,
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to delete file:", err);
@@ -772,10 +705,6 @@ const WorkspacePage = () => {
       );
     }
   };
-
-  /* ------------------------------------------------------------------------ */
-  /* EDITOR                                                                   */
-  /* ------------------------------------------------------------------------ */
 
   const handleEditorChange = (value) => {
     const newContent = value ?? "";
@@ -803,10 +732,6 @@ const WorkspacePage = () => {
     });
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* SAVE                                                                      */
-  /* ------------------------------------------------------------------------ */
-
   const handleSave = async () => {
     const currentFileId = activeFileIdRef.current;
 
@@ -822,7 +747,7 @@ const WorkspacePage = () => {
       const updatedFile = await updateWorkspaceFile({
         workspaceId,
         fileId: currentFileId,
-        fileData: { content: code },
+        fileData: { content: codeRef.current },
       });
 
       setFiles((current) =>
@@ -835,13 +760,6 @@ const WorkspacePage = () => {
 
       setCode(updatedFile.content || "");
       setIsDirty(false);
-
-      if (socket.connected) {
-        socket.emit("file:updated", {
-          workspaceId,
-          file: updatedFile,
-        });
-      }
     } catch (err) {
       console.error("Failed to save file:", err);
 
@@ -853,10 +771,6 @@ const WorkspacePage = () => {
       setIsSaving(false);
     }
   };
-
-  /* ------------------------------------------------------------------------ */
-  /* RUN                                                                       */
-  /* ------------------------------------------------------------------------ */
 
   const handleRun = async () => {
     const currentFile = filesRef.current.find(
@@ -898,7 +812,7 @@ const WorkspacePage = () => {
 
       const response = await api.post("/api/execution/run", {
         language: executionLanguage,
-        code,
+        code: codeRef.current,
         stdin: "",
       });
 
@@ -935,7 +849,10 @@ const WorkspacePage = () => {
         outputParts.push(result.output);
       }
 
-      if (result.exitCode !== null && result.exitCode !== undefined) {
+      if (
+        result.exitCode !== null &&
+        result.exitCode !== undefined
+      ) {
         outputParts.push(
           `\nProcess exited with code ${result.exitCode}`
         );
@@ -964,10 +881,6 @@ const WorkspacePage = () => {
     }
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* KEYBOARD SHORTCUTS                                                       */
-  /* ------------------------------------------------------------------------ */
-
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (
@@ -993,10 +906,6 @@ const WorkspacePage = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   });
-
-  /* ------------------------------------------------------------------------ */
-  /* LOADING / ERROR                                                          */
-  /* ------------------------------------------------------------------------ */
 
   if (loading) {
     return (
@@ -1027,10 +936,6 @@ const WorkspacePage = () => {
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* UI                                                                        */
-  /* ------------------------------------------------------------------------ */
-
   return (
     <div className="h-screen w-full overflow-hidden bg-[#0b0d0f] text-white flex flex-col">
       <header className="h-14 shrink-0 border-b border-white/10 bg-[#101214] flex items-center justify-between px-4">
@@ -1059,13 +964,17 @@ const WorkspacePage = () => {
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center mr-2">
             {isSaving ? (
-              <span className="text-xs text-zinc-500">Saving...</span>
+              <span className="text-xs text-zinc-500">
+                Saving...
+              </span>
             ) : isDirty ? (
               <span className="text-xs text-amber-400">
                 Unsaved changes
               </span>
             ) : (
-              <span className="text-xs text-emerald-400">Saved</span>
+              <span className="text-xs text-emerald-400">
+                Saved
+              </span>
             )}
           </div>
 
@@ -1230,6 +1139,7 @@ const WorkspacePage = () => {
           </button>
 
           <button
+            onClick={() => navigate(`/workspaces/${workspaceId}/settings`)}
             className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
             title="Workspace settings"
           >

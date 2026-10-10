@@ -19,7 +19,8 @@ const app = express();
 
 const server = http.createServer(app);
 
-initializeSocket(server);
+const io = initializeSocket(server);
+app.set("io", io);
 
 app.use(
   cors({

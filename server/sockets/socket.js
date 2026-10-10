@@ -15,10 +15,10 @@ const initializeSocket = (server) => {
     },
   });
 
-  // Pending debounced saves, keyed by workspaceId:fileId.
   const pendingSaves = new Map();
   const fileRevisions = new Map();
 
+  // Authenticate every socket connection.
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
@@ -30,13 +30,8 @@ const initializeSocket = (server) => {
       const accessSecret = process.env.JWT_ACCESS_SECRET;
 
       if (!accessSecret) {
-        console.error(
-          "Socket authentication failed: JWT_ACCESS_SECRET is not configured"
-        );
-
-        return next(
-          new Error("Server authentication configuration error")
-        );
+        console.error("JWT_ACCESS_SECRET is not configured");
+        return next(new Error("Server authentication configuration error"));
       }
 
       const decoded = jwt.verify(token, accessSecret);
@@ -73,6 +68,9 @@ const initializeSocket = (server) => {
     }
   });
 
+  const getSaveKey = (workspaceId, fileId) =>
+    `${String(workspaceId)}:${String(fileId)}`;
+
   const getFileRevision = (saveKey) =>
     fileRevisions.get(saveKey) || 0;
 
@@ -85,22 +83,21 @@ const initializeSocket = (server) => {
   const cancelPendingSave = (saveKey) => {
     const pendingSave = pendingSaves.get(saveKey);
 
-    if (!pendingSave) return;
-
-    if (pendingSave.timer) {
+    if (pendingSave?.timer) {
       clearTimeout(pendingSave.timer);
     }
 
     pendingSaves.delete(saveKey);
   };
 
+  // Debounce autosaves to avoid writing to MongoDB on every keystroke.
   const scheduleFileSave = ({
     workspaceId,
     fileId,
     content,
     userId,
   }) => {
-    const saveKey = `${workspaceId}:${fileId}`;
+    const saveKey = getSaveKey(workspaceId, fileId);
     const existingSave = pendingSaves.get(saveKey);
 
     if (existingSave?.timer) {
@@ -136,17 +133,11 @@ const initializeSocket = (server) => {
         });
 
         console.log(
-          `File autosaved | Workspace: ${workspaceId} | File: ${fileId} | Revision: ${revision}`
+          `File autosaved | Workspace: ${workspaceId} | File: ${fileId}`
         );
-
-        const latestSave = pendingSaves.get(saveKey);
-
-        if (latestSave?.revision === revision) {
-          pendingSaves.delete(saveKey);
-        }
       } catch (error) {
         console.error("File autosave error:", error);
-
+      } finally {
         const latestSave = pendingSaves.get(saveKey);
 
         if (latestSave?.revision === revision) {
@@ -161,9 +152,8 @@ const initializeSocket = (server) => {
   const getCollaboratorInfo = ({ workspace, socketUser }) => {
     const userId = socketUser.userId.toString();
     const ownerId = workspace.owner.toString();
-    const isOwner = ownerId === userId;
 
-    if (isOwner) {
+    if (ownerId === userId) {
       return {
         userId,
         username: socketUser.username,
@@ -203,11 +193,16 @@ const initializeSocket = (server) => {
     access &&
     (access.role === "owner" || access.role === "editor");
 
+  const emitFileError = (socket, message) => {
+    socket.emit("file:error", { message });
+  };
+
   io.on("connection", (socket) => {
     console.log(
       `Socket connected: ${socket.id} | User: ${socket.user.userId}`
     );
 
+    // Join a workspace after checking membership.
     socket.on("workspace:join", async ({ workspaceId } = {}) => {
       try {
         if (!workspaceId) {
@@ -220,24 +215,22 @@ const initializeSocket = (server) => {
         const requestedWorkspaceId = String(workspaceId);
 
         if (
-          socket.workspaceAccess?.workspaceId ===
-          requestedWorkspaceId
+          socket.workspaceAccess?.workspaceId === requestedWorkspaceId
         ) {
           return;
         }
 
-        // Leave a previous workspace if necessary.
+        // Leave the previous workspace, if any.
         if (socket.workspaceAccess?.workspaceId) {
           const previousWorkspaceId =
             socket.workspaceAccess.workspaceId;
 
-          const previousRoom = `workspace:${previousWorkspaceId}`;
+          socket.to(`workspace:${previousWorkspaceId}`).emit(
+            "workspace:user-left",
+            { userId: socket.user.userId }
+          );
 
-          socket.to(previousRoom).emit("workspace:user-left", {
-            userId: socket.user.userId,
-          });
-
-          socket.leave(previousRoom);
+          socket.leave(`workspace:${previousWorkspaceId}`);
           socket.workspaceAccess = null;
         }
 
@@ -274,7 +267,6 @@ const initializeSocket = (server) => {
         }
 
         const roomName = `workspace:${requestedWorkspaceId}`;
-
         const existingUsers = [];
         const room = io.sockets.adapter.rooms.get(roomName);
 
@@ -291,20 +283,20 @@ const initializeSocket = (server) => {
 
             if (!collaborator) continue;
 
-            const existingIndex = existingUsers.findIndex(
-              (user) => user.userId === collaborator.userId
-            );
-
             const onlineUser = {
               ...collaborator,
               activeFileId:
                 existingSocket.workspaceAccess?.activeFileId || null,
             };
 
-            if (existingIndex === -1) {
+            const index = existingUsers.findIndex(
+              (user) => user.userId === collaborator.userId
+            );
+
+            if (index === -1) {
               existingUsers.push(onlineUser);
             } else if (onlineUser.activeFileId) {
-              existingUsers[existingIndex] = onlineUser;
+              existingUsers[index] = onlineUser;
             }
           }
         }
@@ -336,7 +328,7 @@ const initializeSocket = (server) => {
         }
 
         console.log(
-          `User ${socket.user.userId} joined workspace ${workspaceId} | Role: ${role}`
+          `User ${socket.user.userId} joined workspace ${requestedWorkspaceId} | Role: ${role}`
         );
       } catch (error) {
         console.error("Workspace join error:", error);
@@ -347,6 +339,7 @@ const initializeSocket = (server) => {
       }
     });
 
+    // Leave the current workspace.
     socket.on("workspace:leave", ({ workspaceId } = {}) => {
       if (!workspaceId) return;
 
@@ -355,31 +348,32 @@ const initializeSocket = (server) => {
 
       if (!access) return;
 
-      const roomName = `workspace:${requestedWorkspaceId}`;
+      socket.to(`workspace:${requestedWorkspaceId}`).emit(
+        "workspace:user-left",
+        { userId: socket.user.userId }
+      );
 
-      socket.to(roomName).emit("workspace:user-left", {
-        userId: socket.user.userId,
-      });
-
-      socket.leave(roomName);
+      socket.leave(`workspace:${requestedWorkspaceId}`);
       socket.workspaceAccess = null;
 
       console.log(
-        `User ${socket.user.userId} left workspace ${workspaceId}`
+        `User ${socket.user.userId} left workspace ${requestedWorkspaceId}`
       );
     });
 
+    // Track which file each collaborator is viewing.
     socket.on("file:open", async ({ workspaceId, fileId } = {}) => {
       try {
         if (!workspaceId || !fileId) return;
 
-        const access = getWorkspaceAccess(socket, workspaceId);
+        const normalizedWorkspaceId = String(workspaceId);
+        const access = getWorkspaceAccess(socket, normalizedWorkspaceId);
 
         if (!access) return;
 
         const file = await File.findOne({
           _id: fileId,
-          workspace: workspaceId,
+          workspace: normalizedWorkspaceId,
           type: "file",
         }).select("_id");
 
@@ -387,11 +381,11 @@ const initializeSocket = (server) => {
 
         access.activeFileId = file._id.toString();
 
-        socket.to(`workspace:${workspaceId}`).emit(
+        socket.to(`workspace:${normalizedWorkspaceId}`).emit(
           "workspace:user-file-changed",
           {
             userId: socket.user.userId,
-            activeFileId: file._id.toString(),
+            activeFileId: access.activeFileId,
           }
         );
       } catch (error) {
@@ -399,6 +393,7 @@ const initializeSocket = (server) => {
       }
     });
 
+    // Broadcast editor changes and queue an autosave.
     socket.on(
       "file:change",
       async ({ workspaceId, fileId, content } = {}) => {
@@ -408,43 +403,38 @@ const initializeSocket = (server) => {
             !fileId ||
             typeof content !== "string"
           ) {
-            socket.emit("file:error", {
-              message: "Invalid file change data",
-            });
+            emitFileError(socket, "Invalid file change data");
             return;
           }
 
-          const access = getWorkspaceAccess(socket, workspaceId);
+          const normalizedWorkspaceId = String(workspaceId);
+          const access = getWorkspaceAccess(
+            socket,
+            normalizedWorkspaceId
+          );
 
           if (!access) {
-            socket.emit("file:error", {
-              message: "You have not joined this workspace",
-            });
+            emitFileError(socket, "You have not joined this workspace");
             return;
           }
 
           if (!canEdit(access)) {
-            socket.emit("file:error", {
-              message: "You do not have permission to edit this file",
-            });
+            emitFileError(socket, "You do not have permission to edit this file");
             return;
           }
 
           const file = await File.findOne({
             _id: fileId,
-            workspace: workspaceId,
+            workspace: normalizedWorkspaceId,
             type: "file",
           }).select("_id");
 
           if (!file) {
-            socket.emit("file:error", {
-              message: "File not found in this workspace",
-            });
+            emitFileError(socket, "File not found in this workspace");
             return;
           }
 
           const normalizedFileId = file._id.toString();
-          const normalizedWorkspaceId = String(workspaceId);
 
           socket.to(`workspace:${normalizedWorkspaceId}`).emit(
             "file:changed",
@@ -464,14 +454,12 @@ const initializeSocket = (server) => {
           });
         } catch (error) {
           console.error("File change error:", error);
-
-          socket.emit("file:error", {
-            message: "Failed to process file change",
-          });
+          emitFileError(socket, "Failed to process file change");
         }
       }
     );
 
+    // Save immediately when explicitly requested.
     socket.on(
       "file:save",
       async ({ workspaceId, fileId, content } = {}) => {
@@ -481,44 +469,42 @@ const initializeSocket = (server) => {
             !fileId ||
             typeof content !== "string"
           ) {
-            socket.emit("file:error", {
-              message: "Invalid file save data",
-            });
+            emitFileError(socket, "Invalid file save data");
             return;
           }
 
-          const access = getWorkspaceAccess(socket, workspaceId);
+          const normalizedWorkspaceId = String(workspaceId);
+          const access = getWorkspaceAccess(
+            socket,
+            normalizedWorkspaceId
+          );
 
           if (!access) {
-            socket.emit("file:error", {
-              message: "You have not joined this workspace",
-            });
+            emitFileError(socket, "You have not joined this workspace");
             return;
           }
 
           if (!canEdit(access)) {
-            socket.emit("file:error", {
-              message: "You do not have permission to save this file",
-            });
+            emitFileError(socket, "You do not have permission to save this file");
             return;
           }
 
           const file = await File.findOne({
             _id: fileId,
-            workspace: workspaceId,
+            workspace: normalizedWorkspaceId,
             type: "file",
           }).select("_id");
 
           if (!file) {
-            socket.emit("file:error", {
-              message: "File not found in this workspace",
-            });
+            emitFileError(socket, "File not found in this workspace");
             return;
           }
 
           const normalizedFileId = file._id.toString();
-          const normalizedWorkspaceId = String(workspaceId);
-          const saveKey = `${normalizedWorkspaceId}:${normalizedFileId}`;
+          const saveKey = getSaveKey(
+            normalizedWorkspaceId,
+            normalizedFileId
+          );
 
           cancelPendingSave(saveKey);
 
@@ -550,32 +536,32 @@ const initializeSocket = (server) => {
           });
 
           console.log(
-            `File manually saved | Workspace: ${normalizedWorkspaceId} | File: ${normalizedFileId} | User: ${socket.user.userId}`
+            `File manually saved | Workspace: ${normalizedWorkspaceId} | File: ${normalizedFileId}`
           );
         } catch (error) {
           console.error("Manual file save error:", error);
-
-          socket.emit("file:error", {
-            message: "Failed to save file",
-          });
+          emitFileError(socket, "Failed to save file");
         }
       }
     );
 
+    // Broadcast a file/folder after its HTTP creation succeeds.
     socket.on(
       "file:created",
       async ({ workspaceId, file: incomingFile, fileId } = {}) => {
         try {
           if (!workspaceId) return;
 
-          const access = getWorkspaceAccess(socket, workspaceId);
+          const normalizedWorkspaceId = String(workspaceId);
+          const access = getWorkspaceAccess(
+            socket,
+            normalizedWorkspaceId
+          );
 
           if (!access) return;
 
           if (!canEdit(access)) {
-            socket.emit("file:error", {
-              message: "You do not have permission to create files",
-            });
+            emitFileError(socket, "You do not have permission to create files");
             return;
           }
 
@@ -585,35 +571,39 @@ const initializeSocket = (server) => {
 
           const file = await File.findOne({
             _id: id,
-            workspace: workspaceId,
+            workspace: normalizedWorkspaceId,
           }).lean();
 
           if (!file) return;
 
-          socket.to(`workspace:${workspaceId}`).emit(
+          socket.to(`workspace:${normalizedWorkspaceId}`).emit(
             "workspace:file-created",
             file
           );
         } catch (error) {
           console.error("File created event error:", error);
+          emitFileError(socket, "Failed to broadcast file creation");
         }
       }
     );
 
+    // Broadcast file/folder metadata after its HTTP update succeeds.
     socket.on(
       "file:updated",
       async ({ workspaceId, file: incomingFile, fileId } = {}) => {
         try {
           if (!workspaceId) return;
 
-          const access = getWorkspaceAccess(socket, workspaceId);
+          const normalizedWorkspaceId = String(workspaceId);
+          const access = getWorkspaceAccess(
+            socket,
+            normalizedWorkspaceId
+          );
 
           if (!access) return;
 
           if (!canEdit(access)) {
-            socket.emit("file:error", {
-              message: "You do not have permission to update files",
-            });
+            emitFileError(socket, "You do not have permission to update files");
             return;
           }
 
@@ -623,35 +613,39 @@ const initializeSocket = (server) => {
 
           const file = await File.findOne({
             _id: id,
-            workspace: workspaceId,
+            workspace: normalizedWorkspaceId,
           }).lean();
 
           if (!file) return;
 
-          socket.to(`workspace:${workspaceId}`).emit(
+          socket.to(`workspace:${normalizedWorkspaceId}`).emit(
             "workspace:file-updated",
             file
           );
         } catch (error) {
           console.error("File updated event error:", error);
+          emitFileError(socket, "Failed to broadcast file update");
         }
       }
     );
 
+    // Broadcast deletion of a file or folder and cancel affected autosaves.
     socket.on(
       "file:deleted",
       async ({ workspaceId, fileId, fileIds } = {}) => {
         try {
           if (!workspaceId || !fileId) return;
 
-          const access = getWorkspaceAccess(socket, workspaceId);
+          const normalizedWorkspaceId = String(workspaceId);
+          const access = getWorkspaceAccess(
+            socket,
+            normalizedWorkspaceId
+          );
 
           if (!access) return;
 
           if (!canEdit(access)) {
-            socket.emit("file:error", {
-              message: "You do not have permission to delete files",
-            });
+            emitFileError(socket, "You do not have permission to delete files");
             return;
           }
 
@@ -662,16 +656,16 @@ const initializeSocket = (server) => {
           ];
 
           for (const id of idsToDelete) {
-            const saveKey = `${workspaceId}:${id}`;
+            const saveKey = getSaveKey(normalizedWorkspaceId, id);
 
             cancelPendingSave(saveKey);
             fileRevisions.delete(saveKey);
           }
 
-          socket.to(`workspace:${workspaceId}`).emit(
+          socket.to(`workspace:${normalizedWorkspaceId}`).emit(
             "workspace:file-deleted",
             {
-              workspaceId: String(workspaceId),
+              workspaceId: normalizedWorkspaceId,
               fileId: String(fileId),
               fileIds: idsToDelete,
               userId: socket.user.userId,
@@ -679,19 +673,19 @@ const initializeSocket = (server) => {
           );
         } catch (error) {
           console.error("File deleted event error:", error);
+          emitFileError(socket, "Failed to broadcast file deletion");
         }
       }
     );
 
+    // Notify other collaborators when this socket disconnects.
     socket.on("disconnect", () => {
       const access = socket.workspaceAccess;
 
       if (access?.workspaceId) {
         socket.to(`workspace:${access.workspaceId}`).emit(
           "workspace:user-left",
-          {
-            userId: socket.user.userId,
-          }
+          { userId: socket.user.userId }
         );
 
         console.log(
@@ -709,3 +703,4 @@ const initializeSocket = (server) => {
 };
 
 module.exports = initializeSocket;
+
