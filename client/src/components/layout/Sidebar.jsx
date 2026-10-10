@@ -1,3 +1,4 @@
+
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -38,7 +39,6 @@ const navigation = [
       },
     ],
   },
-
   {
     title: "WORKSPACE",
     items: [
@@ -54,7 +54,6 @@ const navigation = [
       },
     ],
   },
-
   {
     title: "ACCOUNT",
     items: [
@@ -72,40 +71,54 @@ const navigation = [
   },
 ];
 
-const Sidebar = ({
-  open,
-  onClose,
-  onCreateWorkspace,
-}) => {
+const Sidebar = ({ open, onClose, onCreateWorkspace }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const logout = useAuthStore(
-    (state) => state.logout
-  );
+  const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
 
-  const user = useAuthStore(
-    (state) => state.user
-  );
+  const getInitials = (username) => {
+    return (
+      username
+        ?.trim()
+        ?.split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase() || "U"
+    );
+  };
 
   const isItemActive = (item, routerIsActive) => {
-  if (item.label === "Workspaces") {
-    return (
-      location.pathname === "/workspaces" &&
-      !location.search
-    );
-  }
+    if (item.label === "Workspaces") {
+      return (
+        location.pathname === "/workspaces" &&
+        !location.search
+      );
+    }
 
-  if (item.label === "Recent") {
-    return location.pathname === "/recent";
-  }
+    if (item.label === "Recent") {
+      return location.pathname === "/recent";
+    }
 
-  if (item.label === "Shared with me") {
-    return location.pathname === "/shared";
-  }
+    if (item.label === "Shared with me") {
+      return location.pathname === "/shared";
+    }
 
-  return routerIsActive;
-};
+    if (item.label === "Profile") {
+      return location.pathname === "/profile";
+    }
+
+    if (item.label === "Settings") {
+      return (
+        location.pathname === "/settings" ||
+        location.pathname.endsWith("/settings")
+      );
+    }
+
+    return routerIsActive;
+  };
 
   const handleLogout = () => {
     logout();
@@ -115,17 +128,14 @@ const Sidebar = ({
 
   return (
     <>
-      {/* Mobile Overlay */}
-
+      {/* Mobile overlay */}
       <div
         onClick={onClose}
         className={`
           fixed inset-0 z-40
-          bg-black/70
-          backdrop-blur-sm
+          bg-black/70 backdrop-blur-sm
           transition-opacity duration-300
           lg:hidden
-
           ${
             open
               ? "pointer-events-auto opacity-100"
@@ -135,7 +145,6 @@ const Sidebar = ({
       />
 
       {/* Sidebar */}
-
       <aside
         className={`
           fixed inset-y-0 left-0 z-50
@@ -144,154 +153,53 @@ const Sidebar = ({
           bg-[#0d0e10]
           shadow-[20px_0_60px_rgba(0,0,0,0.25)]
           transition-transform duration-300 ease-out
-
-          lg:translate-x-0
-          lg:shadow-none
-
-          ${
-            open
-              ? "translate-x-0"
-              : "-translate-x-full"
-          }
+          lg:translate-x-0 lg:shadow-none
+          ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
         {/* Header */}
-
-        <div
-          className="
-            flex h-[76px]
-            shrink-0
-            items-center
-            border-b border-white/[0.06]
-            px-5
-          "
-        >
+        <div className="flex h-[76px] shrink-0 items-center border-b border-white/[0.06] px-5">
           <NavLink
             to="/dashboard"
             onClick={onClose}
             className="group flex items-center gap-3"
           >
-            {/* Logo */}
-
-            <span
-              className="
-                flex h-8 w-8
-                items-center justify-center
-                rounded-[9px]
-                bg-[#dc9458]
-                text-[12px]
-                font-black
-                text-[#17110d]
-                shadow-[0_0_25px_rgba(220,148,88,0.12)]
-                transition-transform duration-200
-                group-hover:scale-105
-              "
-            >
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#dc9458] text-[12px] font-black text-[#17110d] shadow-[0_0_25px_rgba(220,148,88,0.12)] transition-transform duration-200 group-hover:scale-105">
               D
             </span>
 
-            {/* Brand */}
-
             <div className="flex flex-col">
-              <span
-                className="
-                  text-[15px]
-                  font-bold
-                  tracking-[-0.03em]
-                  text-zinc-200
-                "
-              >
+              <span className="text-[15px] font-bold tracking-[-0.03em] text-zinc-200">
                 DevSpace
               </span>
 
-              <span
-                className="
-                  mt-0.5
-                  text-[9px]
-                  font-medium
-                  uppercase
-                  tracking-[0.12em]
-                  text-zinc-600
-                "
-              >
+              <span className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-zinc-600">
                 Developer Platform
               </span>
             </div>
           </NavLink>
 
-          {/* Mobile Close */}
-
           <button
             type="button"
             onClick={onClose}
             aria-label="Close sidebar"
-            className="
-              ml-auto
-              flex h-8 w-8
-              items-center justify-center
-              rounded-lg
-              border border-white/[0.06]
-              text-zinc-600
-              transition
-              hover:bg-white/[0.05]
-              hover:text-zinc-200
-              lg:hidden
-            "
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.06] text-zinc-600 transition hover:bg-white/[0.05] hover:text-zinc-200 lg:hidden"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Navigation */}
-
-        <nav
-          className="
-            flex-1
-            overflow-y-auto
-            px-3
-            py-6
-            scrollbar-thin
-            scrollbar-track-transparent
-            scrollbar-thumb-white/10
-          "
-        >
+        <nav className="flex-1 overflow-y-auto px-3 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
           {navigation.map((section) => (
-            <div
-              key={section.title}
-              className="mb-7 last:mb-0"
-            >
-              {/* Section title */}
-
-              <div
-                className="
-                  mb-2
-                  flex
-                  items-center
-                  px-3
-                "
-              >
-                <span
-                  className="
-                    text-[9px]
-                    font-semibold
-                    tracking-[0.18em]
-                    text-zinc-600
-                  "
-                >
+            <div key={section.title} className="mb-7 last:mb-0">
+              <div className="mb-2 flex items-center px-3">
+                <span className="text-[9px] font-semibold tracking-[0.18em] text-zinc-600">
                   {section.title}
                 </span>
 
-                <div
-                  className="
-                    ml-3
-                    h-px
-                    flex-1
-                    bg-white/[0.035]
-                  "
-                />
+                <div className="ml-3 h-px flex-1 bg-white/[0.035]" />
               </div>
-
-              {/* Navigation items */}
 
               <div className="space-y-1">
                 {section.items.map((item) => {
@@ -303,25 +211,12 @@ const Sidebar = ({
                       to={item.path}
                       onClick={onClose}
                       className={({ isActive }) => {
-                        const active =
-                          isItemActive(
-                            item,
-                            isActive
-                          );
+                        const active = isItemActive(item, isActive);
 
                         return `
-                          group
-                          relative
-                          flex h-10
-                          items-center
-                          gap-3
-                          rounded-lg
-                          px-3
-                          text-[12px]
-                          font-medium
-                          transition-all
-                          duration-200
-
+                          group relative flex h-10 items-center gap-3
+                          rounded-lg px-3 text-[12px] font-medium
+                          transition-all duration-200
                           ${
                             active
                               ? "bg-[#241d19] text-zinc-100"
@@ -331,48 +226,23 @@ const Sidebar = ({
                       }}
                     >
                       {({ isActive }) => {
-                        const active =
-                          isItemActive(
-                            item,
-                            isActive
-                          );
+                        const active = isItemActive(item, isActive);
 
                         return (
                           <>
-                            {/* Active indicator */}
-
                             <span
                               className={`
-                                absolute
-                                left-0
-                                top-1/2
-                                h-5
-                                w-[2px]
-                                -translate-y-1/2
-                                rounded-r-full
-                                bg-[#dc9458]
-                                transition-opacity
-
-                                ${
-                                  active
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }
+                                absolute left-0 top-1/2 h-5 w-[2px]
+                                -translate-y-1/2 rounded-r-full
+                                bg-[#dc9458] transition-opacity
+                                ${active ? "opacity-100" : "opacity-0"}
                               `}
                             />
 
-                            {/* Icon */}
-
                             <span
                               className={`
-                                flex h-7 w-7
-                                shrink-0
-                                items-center
-                                justify-center
-                                rounded-md
-                                transition-all
-                                duration-200
-
+                                flex h-7 w-7 shrink-0 items-center
+                                justify-center rounded-md transition-all duration-200
                                 ${
                                   active
                                     ? "bg-[#dc9458]/10 text-[#dc9458]"
@@ -382,40 +252,19 @@ const Sidebar = ({
                             >
                               <Icon
                                 size={15}
-                                strokeWidth={
-                                  active
-                                    ? 2
-                                    : 1.7
-                                }
+                                strokeWidth={active ? 2 : 1.7}
                               />
                             </span>
 
-                            {/* Label */}
-
-                            <span
-                              className="
-                                min-w-0
-                                flex-1
-                                truncate
-                              "
-                            >
+                            <span className="min-w-0 flex-1 truncate">
                               {item.label}
                             </span>
-
-                            {/* Count */}
 
                             {item.count && (
                               <span
                                 className={`
-                                  flex h-5
-                                  min-w-5
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  px-1.5
-                                  text-[9px]
-                                  font-semibold
-
+                                  flex h-5 min-w-5 items-center justify-center
+                                  rounded-full px-1.5 text-[9px] font-semibold
                                   ${
                                     active
                                       ? "bg-[#dc9458]/15 text-[#dc9458]"
@@ -427,14 +276,10 @@ const Sidebar = ({
                               </span>
                             )}
 
-                            {/* Active arrow */}
-
                             {active && (
                               <ChevronRight
                                 size={13}
-                                className="
-                                  text-[#dc9458]/60
-                                "
+                                className="text-[#dc9458]/60"
                               />
                             )}
                           </>
@@ -448,160 +293,58 @@ const Sidebar = ({
           ))}
         </nav>
 
+        {/* Create workspace */}
         <div className="px-3 pb-3">
           <button
             type="button"
             onClick={onCreateWorkspace}
-            className="
-              group
-              relative
-              flex h-10
-              w-full
-              items-center
-              justify-center
-              gap-2
-              overflow-hidden
-              rounded-lg
-              border border-[#dc9458]/20
-              bg-[#dc9458]/[0.07]
-              text-[11px]
-              font-semibold
-              text-[#dc9458]
-              transition-all
-              duration-200
-
-              hover:border-[#dc9458]/40
-              hover:bg-[#dc9458]/[0.12]
-              active:scale-[0.98]
-            "
+            className="group relative flex h-10 w-full items-center justify-center gap-2 overflow-hidden rounded-lg border border-[#dc9458]/20 bg-[#dc9458]/[0.07] text-[11px] font-semibold text-[#dc9458] transition-all duration-200 hover:border-[#dc9458]/40 hover:bg-[#dc9458]/[0.12] active:scale-[0.98]"
           >
-            <span
-              className="
-                absolute
-                inset-0
-                -translate-x-full
-                bg-gradient-to-r
-                from-transparent
-                via-white/[0.04]
-                to-transparent
-                transition-transform
-                duration-500
-                group-hover:translate-x-full
-              "
-            />
+            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.04] to-transparent transition-transform duration-500 group-hover:translate-x-full" />
 
-            <Plus
-              size={15}
-              strokeWidth={2.2}
-            />
-
-            <span>
-              New Workspace
-            </span>
+            <Plus size={15} strokeWidth={2.2} />
+            <span>New Workspace</span>
           </button>
         </div>
 
-        {/* User */}
-
-        <div
-          className="
-            border-t
-            border-white/[0.06]
-            p-3
-          "
-        >
-          <div
-            className="
-              group
-              flex
-              items-center
-              gap-3
-              rounded-lg
-              p-2
-              transition
-              hover:bg-white/[0.025]
-            "
-          >
-            {/* Avatar */}
-
+        {/* User account */}
+        <div className="border-t border-white/[0.06] p-3">
+          <div className="group flex items-center gap-3 rounded-lg p-2 transition hover:bg-white/[0.025]">
             <NavLink
               to="/profile"
               onClick={onClose}
-              className="
-                relative
-                shrink-0
-              "
+              aria-label="Open profile"
+              className="relative shrink-0"
             >
-              <div
-                className="
-                  flex h-9 w-9
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-[#dc9458]
-                  text-[10px]
-                  font-bold
-                  text-[#17110d]
-                "
-              >
-                {user?.username
-                  ?.slice(0, 2)
-                  .toUpperCase() || "TP"}
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/[0.08] bg-[#dc9458] text-[10px] font-bold text-[#17110d]">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  getInitials(user?.username)
+                )}
               </div>
 
-              <span
-                className="
-                  absolute
-                  bottom-0
-                  right-0
-                  h-2.5
-                  w-2.5
-                  rounded-full
-                  border-2
-                  border-[#0d0e10]
-                  bg-emerald-400
-                "
-              />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#0d0e10] bg-emerald-400" />
             </NavLink>
 
             <NavLink
               to="/profile"
               onClick={onClose}
-              className="
-                min-w-0
-                flex-1
-              "
+              className="min-w-0 flex-1"
             >
-              <p
-                className="
-                  truncate
-                  text-[11px]
-                  font-semibold
-                  text-zinc-300
-                "
-              >
+              <p className="truncate text-[11px] font-semibold text-zinc-300">
                 {user?.username || "User"}
               </p>
 
-              <p
-                className="
-                  mt-0.5
-                  flex
-                  items-center
-                  gap-1
-                  text-[9px]
-                  text-zinc-600
-                "
-              >
-                <span
-                  className="
-                    h-1
-                    w-1
-                    rounded-full
-                    bg-emerald-400
-                  "
-                />
-
+              <p className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-600">
+                <span className="h-1 w-1 rounded-full bg-emerald-400" />
                 Online
               </p>
             </NavLink>
@@ -609,21 +352,9 @@ const Sidebar = ({
             <button
               type="button"
               title="Log out"
+              aria-label="Log out"
               onClick={handleLogout}
-              className="
-                flex h-8 w-8
-                shrink-0
-                items-center
-                justify-center
-                rounded-md
-                border border-white/[0.06]
-                text-zinc-600
-                transition-all
-
-                hover:border-red-400/20
-                hover:bg-red-400/[0.05]
-                hover:text-red-400
-              "
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/[0.06] text-zinc-600 transition-all hover:border-red-400/20 hover:bg-red-400/[0.05] hover:text-red-400"
             >
               <LogOut size={13} />
             </button>

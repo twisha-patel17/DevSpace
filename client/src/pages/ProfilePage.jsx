@@ -10,7 +10,7 @@ import {
   X,
   LoaderCircle,
   Camera,
-  Github,
+  Code2,
   LockKeyhole,
   AlertCircle,
   CheckCircle2,
@@ -19,7 +19,7 @@ import {
 import {
   getCurrentUser,
   updateUserProfile,
-} from "../api/user.api";
+} from "../api/auth.api";
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
@@ -29,6 +29,7 @@ const ProfilePage = () => {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -41,12 +42,18 @@ const ProfilePage = () => {
       const response = await getCurrentUser();
       const profile = response.user;
 
+      if (!profile) {
+        throw new Error("Profile information was not returned by the server.");
+      }
+
       setUser(profile);
       setUsername(profile.username || "");
       setAvatar(profile.avatar || "");
+      setAvatarFailed(false);
     } catch (err) {
       setError(
         err.response?.data?.message ||
+          err.message ||
           "Unable to load your profile. Please try again."
       );
     } finally {
@@ -55,13 +62,13 @@ const ProfilePage = () => {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProfile();
   }, []);
 
   const handleEdit = () => {
     setUsername(user.username || "");
     setAvatar(user.avatar || "");
+    setAvatarFailed(false);
     setError("");
     setSuccess("");
     setEditing(true);
@@ -70,7 +77,9 @@ const ProfilePage = () => {
   const handleCancel = () => {
     setUsername(user.username || "");
     setAvatar(user.avatar || "");
+    setAvatarFailed(false);
     setError("");
+    setSuccess("");
     setEditing(false);
   };
 
@@ -78,6 +87,7 @@ const ProfilePage = () => {
     event.preventDefault();
 
     const trimmedUsername = username.trim();
+    const trimmedAvatar = avatar.trim();
 
     if (trimmedUsername.length < 3) {
       setError("Username must contain at least 3 characters.");
@@ -89,6 +99,20 @@ const ProfilePage = () => {
       return;
     }
 
+    if (trimmedAvatar) {
+      try {
+        const parsedUrl = new URL(trimmedAvatar);
+
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+          setError("Avatar URL must start with http:// or https://.");
+          return;
+        }
+      } catch {
+        setError("Please enter a valid avatar image URL.");
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setError("");
@@ -96,17 +120,23 @@ const ProfilePage = () => {
 
       const response = await updateUserProfile({
         username: trimmedUsername,
-        avatar: avatar.trim(),
+        avatar: trimmedAvatar,
       });
+
+      if (!response.user) {
+        throw new Error("The server did not return the updated profile.");
+      }
 
       setUser(response.user);
       setUsername(response.user.username || "");
       setAvatar(response.user.avatar || "");
+      setAvatarFailed(false);
       setEditing(false);
       setSuccess("Your profile has been updated successfully.");
     } catch (err) {
       setError(
         err.response?.data?.message ||
+          err.message ||
           "Unable to update your profile. Please try again."
       );
     } finally {
@@ -117,15 +147,46 @@ const ProfilePage = () => {
   const formatDate = (date) => {
     if (!date) return "Not available";
 
-    return new Date(date).toLocaleDateString("en-IN", {
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return "Not available";
+    }
+
+    return parsedDate.toLocaleDateString("en-IN", {
       day: "numeric",
       month: "long",
       year: "numeric",
     });
   };
 
-  const getInitial = (name) => {
-    return name?.trim()?.charAt(0)?.toUpperCase() || "U";
+  const getInitial = (name) =>
+    name?.trim()?.charAt(0)?.toUpperCase() || "U";
+
+  const Avatar = ({ size = "large" }) => {
+    const sizeClasses =
+      size === "small"
+        ? "h-10 w-10 rounded-xl text-base"
+        : "h-24 w-24 rounded-2xl text-3xl";
+
+    const showImage = user?.avatar && !avatarFailed;
+
+    return (
+      <div
+        className={`flex shrink-0 items-center justify-center overflow-hidden border-4 border-[#101214] bg-[#25201c] font-semibold text-[#e9b17e] ${sizeClasses}`}
+      >
+        {showImage ? (
+          <img
+            src={user.avatar}
+            alt={`${user.username || "User"}'s avatar`}
+            className="h-full w-full object-cover"
+            onError={() => setAvatarFailed(true)}
+          />
+        ) : (
+          getInitial(user?.username)
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -144,9 +205,11 @@ const ProfilePage = () => {
       <div className="mx-auto max-w-3xl px-6 py-12">
         <div className="rounded-2xl border border-white/[0.08] bg-[#101214] p-6">
           <AlertCircle className="mb-3 h-6 w-6 text-red-400" />
+
           <h2 className="text-lg font-semibold text-[#f2eee9]">
             Couldn't load your profile
           </h2>
+
           <p className="mt-2 text-sm text-[#96918b]">
             {error || "Something went wrong while loading your account."}
           </p>
@@ -164,7 +227,6 @@ const ProfilePage = () => {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-8 lg:py-10">
-      {/* Page heading */}
       <div className="mb-8">
         <p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-[#dc9458]">
           Your account
@@ -175,6 +237,7 @@ const ProfilePage = () => {
             <h1 className="text-3xl font-semibold tracking-tight text-[#f2eee9] sm:text-4xl">
               Profile
             </h1>
+
             <p className="mt-2 text-sm text-[#96918b]">
               Manage your personal information and account details.
             </p>
@@ -192,16 +255,21 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* Notifications */}
       {error && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-400/20 bg-red-400/[0.06] p-4 text-sm text-red-300">
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-3 rounded-xl border border-red-400/20 bg-red-400/[0.06] p-4 text-sm text-red-300"
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
       {success && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-sm text-emerald-300">
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-sm text-emerald-300"
+        >
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <p>{success}</p>
         </div>
@@ -213,19 +281,8 @@ const ProfilePage = () => {
           <div className="h-24 bg-gradient-to-r from-[#3c2a1e] via-[#68452e] to-[#24201c]" />
 
           <div className="px-6 pb-6">
-            <div className="-mt-12 flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-[#101214] bg-[#25201c] text-3xl font-semibold text-[#e9b17e]">
-              {user.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt={`${user.username}'s avatar`}
-                  className="h-full w-full object-cover"
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                />
-              ) : (
-                getInitial(user.username)
-              )}
+            <div className="-mt-12">
+              <Avatar />
             </div>
 
             <h2 className="mt-5 break-words text-xl font-semibold text-[#f2eee9]">
@@ -244,10 +301,11 @@ const ProfilePage = () => {
 
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-[#b0aaa3]">
                 {user.authProvider === "github" ? (
-                  <Github className="h-3.5 w-3.5" />
+                  <Code2 className="h-3.5 w-3.5" />
                 ) : (
                   <LockKeyhole className="h-3.5 w-3.5" />
                 )}
+
                 {user.authProvider === "github"
                   ? "GitHub login"
                   : "Email & password"}
@@ -277,6 +335,7 @@ const ProfilePage = () => {
             <h2 className="text-lg font-semibold text-[#f2eee9]">
               Personal information
             </h2>
+
             <p className="mt-1 text-sm text-[#96918b]">
               Your profile details and account identity.
             </p>
@@ -358,7 +417,10 @@ const ProfilePage = () => {
                     type="url"
                     value={avatar}
                     disabled={!editing || saving}
-                    onChange={(event) => setAvatar(event.target.value)}
+                    onChange={(event) => {
+                      setAvatar(event.target.value);
+                      setAvatarFailed(false);
+                    }}
                     className="w-full rounded-xl border border-white/[0.08] bg-[#0b0d0f] py-3 pl-10 pr-4 text-sm text-[#f2eee9] outline-none transition placeholder:text-[#625e59] focus:border-[#dc9458]/60 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="https://example.com/avatar.png"
                   />
@@ -377,7 +439,7 @@ const ProfilePage = () => {
 
                 <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                   {user.authProvider === "github" ? (
-                    <Github className="h-5 w-5 text-[#c9c2ba]" />
+                    <Code2 className="h-5 w-5 text-[#c9c2ba]" />
                   ) : (
                     <LockKeyhole className="h-5 w-5 text-[#c9c2ba]" />
                   )}
@@ -388,6 +450,7 @@ const ProfilePage = () => {
                         ? "GitHub"
                         : "Email and password"}
                     </p>
+
                     <p className="mt-1 text-xs text-[#77736e]">
                       Managed by your authentication provider.
                     </p>
@@ -419,6 +482,7 @@ const ProfilePage = () => {
                   ) : (
                     <Check className="h-4 w-4" />
                   )}
+
                   {saving ? "Saving..." : "Save changes"}
                 </button>
               </div>

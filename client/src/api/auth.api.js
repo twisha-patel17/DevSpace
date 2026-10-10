@@ -24,8 +24,13 @@ export const logoutUser = async () => {
   return response.data;
 };
 
+
 export const getCurrentUser = async () => {
   const response = await api.get("/users/me");
+  return response.data;
+};
 
+export const updateUserProfile = async (profileData) => {
+  const response = await api.put("/users/me", profileData);
   return response.data;
 };
