@@ -2,6 +2,8 @@ const Workspace = require("../models/workspace.model");
 const File = require("../models/file.model");
 const User = require("../models/user.model");
 
+const mongoose = require("mongoose");
+
 const escapeRegex = (value) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

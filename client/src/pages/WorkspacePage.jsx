@@ -1,10 +1,5 @@
 /* eslint-disable react-hooks/refs */
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -152,7 +147,7 @@ const WorkspacePage = () => {
   const codeRef = useRef(code);
   const isDirtyRef = useRef(isDirty);
 
-  // eslint-disable-next-line react-hooks/refs
+  // Keep refs synchronized with the latest state.
   filesRef.current = files;
   activeFileIdRef.current = activeFileId;
   codeRef.current = code;
@@ -181,6 +176,7 @@ const WorkspacePage = () => {
     return getDefaultFileName(workspace);
   }, [activeFile, workspace]);
 
+  // Real-time workspace collaboration.
   useEffect(() => {
     if (!workspaceId || !accessToken) return;
 
@@ -216,9 +212,7 @@ const WorkspacePage = () => {
 
         if (exists) {
           return current.map((item) =>
-            item.userId === user.userId
-              ? { ...item, ...user }
-              : item
+            item.userId === user.userId ? { ...item, ...user } : item
           );
         }
 
@@ -279,6 +273,7 @@ const WorkspacePage = () => {
     };
   }, [workspaceId, accessToken]);
 
+  // Listen for file changes made by other collaborators.
   useEffect(() => {
     if (!workspaceId) return;
 
@@ -327,7 +322,6 @@ const WorkspacePage = () => {
           );
 
           if (activeStillExists) {
-         
             continue;
           }
 
@@ -385,6 +379,7 @@ const WorkspacePage = () => {
     };
   }, [workspaceId]);
 
+  // Load workspace details and files.
   useEffect(() => {
     let cancelled = false;
 
@@ -396,8 +391,9 @@ const WorkspacePage = () => {
         setFilesLoading(true);
         setError("");
 
+        // FIX: api.js already includes /api in its baseURL.
         const workspaceResponse = await api.get(
-          `/api/workspaces/${workspaceId}`
+          `/workspaces/${workspaceId}`
         );
 
         if (cancelled) return;
@@ -406,7 +402,8 @@ const WorkspacePage = () => {
         setWorkspace(loadedWorkspace);
 
         try {
-          await api.patch(`/api/workspaces/${workspaceId}/opened`);
+          // FIX: Do not add another /api prefix.
+          await api.patch(`/workspaces/${workspaceId}/opened`);
         } catch {
           // Opening the workspace should not block the editor.
         }
@@ -458,8 +455,7 @@ const WorkspacePage = () => {
         console.error("Failed to load workspace:", err);
 
         setError(
-          err.response?.data?.message ||
-            "Failed to load workspace."
+          err.response?.data?.message || "Failed to load workspace."
         );
       } finally {
         if (!cancelled) {
@@ -477,9 +473,7 @@ const WorkspacePage = () => {
   }, [workspaceId]);
 
   const handleFileSelect = (fileId) => {
-    const file = filesRef.current.find(
-      (item) => item._id === fileId
-    );
+    const file = filesRef.current.find((item) => item._id === fileId);
 
     if (!file || file.type === "folder") return;
     if (file._id === activeFileIdRef.current) return;
@@ -507,6 +501,7 @@ const WorkspacePage = () => {
       });
     }
   };
+
   const openCreateFileModal = (parent = null) => {
     setFileModal({
       open: true,
@@ -559,17 +554,11 @@ const WorkspacePage = () => {
         workspaceId,
         fileData: {
           name,
-          path: getFilePath(
-            name,
-            fileModal.parent,
-            filesRef.current
-          ),
+          path: getFilePath(name, fileModal.parent, filesRef.current),
           type,
           parent: fileModal.parent || null,
           language:
-            type === "file"
-              ? getLanguageFromFileName(name)
-              : null,
+            type === "file" ? getLanguageFromFileName(name) : null,
           content: "",
         },
       });
@@ -602,8 +591,7 @@ const WorkspacePage = () => {
       console.error("Failed to create file:", err);
 
       setOutput(
-        err.response?.data?.message ||
-          "Failed to create file."
+        err.response?.data?.message || "Failed to create file."
       );
     }
   };
@@ -626,7 +614,7 @@ const WorkspacePage = () => {
         ? `${parentPath}/${name}`
         : `/${name}`;
 
-      const updatedFile = await updateWorkspaceFile({
+      await updateWorkspaceFile({
         workspaceId,
         fileId: file._id,
         fileData: {
@@ -638,14 +626,12 @@ const WorkspacePage = () => {
       const updatedFiles = await getWorkspaceFiles(workspaceId);
 
       setFiles(updatedFiles);
-
       closeFileModal();
     } catch (err) {
       console.error("Failed to rename file:", err);
 
       setOutput(
-        err.response?.data?.message ||
-          "Failed to rename file."
+        err.response?.data?.message || "Failed to rename file."
       );
     }
   };
@@ -665,22 +651,17 @@ const WorkspacePage = () => {
       });
 
       const deletedIds =
-        result.fileIds ||
-        result.deletedFileIds ||
-        [file._id];
+        result.fileIds || result.deletedFileIds || [file._id];
 
       setFiles((current) =>
-        current.filter(
-          (item) => !deletedIds.includes(item._id)
-        )
+        current.filter((item) => !deletedIds.includes(item._id))
       );
 
       if (deletedIds.includes(activeFileIdRef.current)) {
         const nextFile =
           filesRef.current.find(
             (item) =>
-              item.type === "file" &&
-              !deletedIds.includes(item._id)
+              item.type === "file" && !deletedIds.includes(item._id)
           ) || null;
 
         activeFileIdRef.current = nextFile?._id || null;
@@ -700,8 +681,7 @@ const WorkspacePage = () => {
       console.error("Failed to delete file:", err);
 
       setOutput(
-        err.response?.data?.message ||
-          "Failed to delete file."
+        err.response?.data?.message || "Failed to delete file."
       );
     }
   };
@@ -764,8 +744,7 @@ const WorkspacePage = () => {
       console.error("Failed to save file:", err);
 
       setOutput(
-        err.response?.data?.message ||
-          "Failed to save file."
+        err.response?.data?.message || "Failed to save file."
       );
     } finally {
       setIsSaving(false);
@@ -810,7 +789,8 @@ const WorkspacePage = () => {
       setIsRunning(true);
       setOutput(`Running ${currentFile.name}...\n`);
 
-      const response = await api.post("/api/execution/run", {
+      // FIX: The Axios baseURL already includes /api.
+      const response = await api.post("/execution/run", {
         language: executionLanguage,
         code: codeRef.current,
         stdin: "",
@@ -873,14 +853,14 @@ const WorkspacePage = () => {
       console.error("Code execution failed:", err);
 
       setOutput(
-        err.response?.data?.message ||
-          "Code execution failed."
+        err.response?.data?.message || "Code execution failed."
       );
     } finally {
       setIsRunning(false);
     }
   };
 
+  // Keyboard shortcuts: Ctrl/Cmd + S to save, Ctrl/Cmd + Enter to run.
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (
@@ -978,7 +958,7 @@ const WorkspacePage = () => {
             )}
           </div>
 
-          {/* COLLABORATORS */}
+          {/* Collaborators */}
           <div className="relative">
             <button
               onClick={() =>
@@ -1105,7 +1085,7 @@ const WorkspacePage = () => {
             )}
           </div>
 
-          {/* SAVE */}
+          {/* Save */}
           <button
             onClick={handleSave}
             disabled={
@@ -1122,7 +1102,7 @@ const WorkspacePage = () => {
             </span>
           </button>
 
-          {/* RUN */}
+          {/* Run */}
           <button
             onClick={handleRun}
             disabled={
@@ -1139,7 +1119,9 @@ const WorkspacePage = () => {
           </button>
 
           <button
-            onClick={() => navigate(`/workspaces/${workspaceId}/settings`)}
+            onClick={() =>
+              navigate(`/workspaces/${workspaceId}/settings`)
+            }
             className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
             title="Workspace settings"
           >
@@ -1149,7 +1131,7 @@ const WorkspacePage = () => {
       </header>
 
       <div className="flex flex-1 min-h-0">
-        {/* FILE EXPLORER */}
+        {/* File Explorer */}
         <aside className="w-64 shrink-0 border-r border-white/10 bg-[#0f1113] flex flex-col">
           <div className="h-11 px-3 border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1197,12 +1179,15 @@ const WorkspacePage = () => {
           </div>
         </aside>
 
-        {/* EDITOR AREA */}
+        {/* Editor Area */}
         <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#0b0d0f]">
           <div className="h-10 shrink-0 border-b border-white/10 bg-[#0f1113] flex items-center">
             {activeFile ? (
               <div className="h-full px-4 border-r border-white/10 flex items-center gap-2 min-w-0">
-                <FileCode2 size={14} className="text-[#dc9458] shrink-0" />
+                <FileCode2
+                  size={14}
+                  className="text-[#dc9458] shrink-0"
+                />
                 <span className="text-xs text-zinc-300 truncate">
                   {fileName}
                 </span>
@@ -1258,11 +1243,14 @@ const WorkspacePage = () => {
             )}
           </div>
 
-          {/* OUTPUT */}
+          {/* Output */}
           <div className="h-36 shrink-0 border-t border-white/10 bg-[#0e1012] flex flex-col">
             <div className="h-9 shrink-0 px-3 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Terminal size={14} className="text-[#dc9458]" />
+                <Terminal
+                  size={14}
+                  className="text-[#dc9458]"
+                />
                 <span className="text-xs font-medium text-zinc-400">
                   Output
                 </span>
@@ -1298,7 +1286,7 @@ const WorkspacePage = () => {
         </main>
       </div>
 
-      {/* FILE MODAL */}
+      {/* File Modal */}
       {fileModal.open && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#111416] shadow-2xl">

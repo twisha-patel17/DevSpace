@@ -1,167 +1,113 @@
 import api from "./axios";
 
 export const getWorkspaces = async () => {
-  const response = await api.get(
-    "/api/workspaces"
-  );
-
-  return response.data.workspaces;
+const response = await api.get("/workspaces");
+return response.data.workspaces;
 };
 
 export const getRecentWorkspaces = async () => {
-  const response = await api.get(
-    "/api/workspaces/recent"
-  );
-
-  return response.data.workspaces;
+const response = await api.get("/workspaces/recent");
+return response.data.workspaces;
 };
 
 export const getSharedWorkspaces = async () => {
-  const response = await api.get(
-    "/api/workspaces/shared"
-  );
-
-  return response.data.workspaces;
+const response = await api.get("/workspaces/shared");
+return response.data.workspaces;
 };
 
-export const getWorkspace = async (
-  workspaceId
-) => {
-  const response = await api.get(
-    `/api/workspaces/${workspaceId}`
-  );
-
-  return response.data.workspace;
+export const getWorkspace = async (workspaceId) => {
+const response = await api.get(`/workspaces/${workspaceId}`);
+return response.data.workspace;
 };
 
-export const createWorkspace = async (
-  workspaceData
-) => {
-  const response = await api.post(
-    "/api/workspaces",
-    workspaceData
-  );
-
-  return response.data.workspace;
+export const createWorkspace = async (workspaceData) => {
+const response = await api.post("/workspaces", workspaceData);
+return response.data.workspace;
 };
 
-export const updateWorkspace = async ({
-  workspaceId,
-  workspaceData,
-}) => {
-  const response = await api.patch(
-    `/api/workspaces/${workspaceId}`,
-    workspaceData
-  );
-
-  return response.data.workspace;
+export const updateWorkspace = async ({ workspaceId, workspaceData }) => {
+const response = await api.patch(
+`/workspaces/${workspaceId}`,
+workspaceData
+);
+return response.data.workspace;
 };
 
-export const deleteWorkspace = async (
-  workspaceId
-) => {
-  const response = await api.delete(
-    `/api/workspaces/${workspaceId}`
-  );
-
-  return response.data;
+export const deleteWorkspace = async (workspaceId) => {
+const response = await api.delete(`/workspaces/${workspaceId}`);
+return response.data;
 };
 
-export const markWorkspaceOpened = async (
-  workspaceId
-) => {
-  const response = await api.patch(
-    `/api/workspaces/${workspaceId}/opened`
-  );
-
-  return response.data.workspace;
+export const markWorkspaceOpened = async (workspaceId) => {
+const response = await api.patch(`/workspaces/${workspaceId}/opened`);
+return response.data.workspace;
 };
 
-export const getWorkspaceFiles = async (
-  workspaceId
-) => {
-  const response = await api.get(
-    `/api/workspaces/${workspaceId}/files`
-  );
-
-  return response.data.files;
+export const getWorkspaceFiles = async (workspaceId) => {
+const response = await api.get(`/workspaces/${workspaceId}/files`);
+return response.data.files;
 };
 
-export const createWorkspaceFile = async ({
-  workspaceId,
-  fileData,
-}) => {
-  const response = await api.post(
-    `/api/workspaces/${workspaceId}/files`,
-    fileData
-  );
-
-  return response.data.file;
+export const createWorkspaceFile = async ({ workspaceId, fileData }) => {
+const response = await api.post(
+`/workspaces/${workspaceId}/files`,
+fileData
+);
+return response.data.file;
 };
 
 export const updateWorkspaceFile = async ({
-  workspaceId,
-  fileId,
-  fileData,
+workspaceId,
+fileId,
+fileData,
 }) => {
-  const response = await api.patch(
-    `/api/workspaces/${workspaceId}/files/${fileId}`,
-    fileData
-  );
-
-  return response.data.file;
+const response = await api.patch(
+`/workspaces/${workspaceId}/files/${fileId}`,
+fileData
+);
+return response.data.file;
 };
 
-export const deleteWorkspaceFile = async ({
-  workspaceId,
-  fileId,
-}) => {
-  const response = await api.delete(
-    `/api/workspaces/${workspaceId}/files/${fileId}`
-  );
-
-  return response.data;
+export const deleteWorkspaceFile = async ({ workspaceId, fileId }) => {
+const response = await api.delete(
+`/workspaces/${workspaceId}/files/${fileId}`
+);
+return response.data;
 };
 
 export const addWorkspaceMember = async ({
-  workspaceId,
-  memberUserId,
-  role,
+workspaceId,
+memberUserId,
+role,
 }) => {
-  const response = await api.post(
-    `/api/workspaces/${workspaceId}/members`,
-    {
-      userId: memberUserId,
-      role,
-    }
-  );
-
-  return response.data.workspace;
+const response = await api.post(
+`/workspaces/${workspaceId}/members`,
+{
+userId: memberUserId,
+role,
+}
+);
+return response.data.workspace;
 };
 
-export const updateWorkspaceMemberRole =
-  async ({
-    workspaceId,
-    memberUserId,
-    role,
-  }) => {
-    const response = await api.patch(
-      `/api/workspaces/${workspaceId}/members/${memberUserId}`,
-      {
-        role,
-      }
-    );
-
-    return response.data.workspace;
-  };
+export const updateWorkspaceMemberRole = async ({
+workspaceId,
+memberUserId,
+role,
+}) => {
+const response = await api.patch(
+`/workspaces/${workspaceId}/members/${memberUserId}`,
+{ role }
+);
+return response.data.workspace;
+};
 
 export const removeWorkspaceMember = async ({
-  workspaceId,
-  memberUserId,
+workspaceId,
+memberUserId,
 }) => {
-  const response = await api.delete(
-    `/api/workspaces/${workspaceId}/members/${memberUserId}`
-  );
-
-  return response.data;
+const response = await api.delete(
+`/workspaces/${workspaceId}/members/${memberUserId}`
+);
+return response.data;
 };

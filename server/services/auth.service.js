@@ -1,12 +1,14 @@
+
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 
 const {
   generateAccessToken,
   generateRefreshToken,
+  verifyRefreshToken,
 } = require("../utils/jwt");
 
+// Register a new user
 const registerUser = async ({ username, email, password }) => {
   const existingUser = await User.findOne({ email });
 
@@ -37,6 +39,7 @@ const registerUser = async ({ username, email, password }) => {
   };
 };
 
+// Login with email and password
 const loginUser = async ({ email, password }) => {
   const user = await User.findOne({ email }).select("+password");
 
@@ -73,6 +76,7 @@ const loginUser = async ({ email, password }) => {
   };
 };
 
+// Generate a unique username for GitHub users
 const generateUniqueUsername = async (githubUsername) => {
   let baseUsername = githubUsername
     .toLowerCase()
@@ -88,6 +92,7 @@ const generateUniqueUsername = async (githubUsername) => {
 
   while (await User.exists({ username })) {
     const suffix = `_${counter}`;
+
     username =
       baseUsername.slice(0, 30 - suffix.length) + suffix;
 
@@ -97,6 +102,7 @@ const generateUniqueUsername = async (githubUsername) => {
   return username;
 };
 
+// Exchange GitHub OAuth code for a GitHub access token
 const getGithubAccessToken = async (code) => {
   const response = await fetch(
     "https://github.com/login/oauth/access_token",
@@ -118,36 +124,33 @@ const getGithubAccessToken = async (code) => {
 
   if (!response.ok || !data.access_token) {
     console.error("GitHub token error:", data);
-
     throw new Error("Failed to authenticate with GitHub");
   }
 
   return data.access_token;
 };
 
+// Fetch the authenticated GitHub user's profile
 const getGithubProfile = async (accessToken) => {
-  const response = await fetch(
-    "https://api.github.com/user",
-    {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${accessToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }
-  );
+  const response = await fetch("https://api.github.com/user", {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${accessToken}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
 
   const data = await response.json();
 
   if (!response.ok) {
     console.error("GitHub profile error:", data);
-
     throw new Error("Failed to fetch GitHub profile");
   }
 
   return data;
 };
 
+// Fetch the user's verified GitHub email
 const getGithubEmail = async (accessToken) => {
   const response = await fetch(
     "https://api.github.com/user/emails",
@@ -169,29 +172,31 @@ const getGithubEmail = async (accessToken) => {
   const primaryEmail =
     emails.find(
       (email) => email.primary && email.verified
-    ) ||
-    emails.find((email) => email.verified);
+    ) || emails.find((email) => email.verified);
 
   if (!primaryEmail) {
     throw new Error(
       "No verified email address found on your GitHub account"
     );
   }
+
   return primaryEmail.email.toLowerCase();
 };
+
+// Login or register using GitHub
 const loginWithGithub = async (code) => {
- 
-  const githubAccessToken =
-    await getGithubAccessToken(code);
+  const githubAccessToken = await getGithubAccessToken(code);
 
-  const githubProfile =
-    await getGithubProfile(githubAccessToken);
+  const githubProfile = await getGithubProfile(
+    githubAccessToken
+  );
 
-  const email =
-    await getGithubEmail(githubAccessToken);
+  const email = await getGithubEmail(githubAccessToken);
+
   let user = await User.findOne({
     githubId: String(githubProfile.id),
   });
+
   if (!user) {
     user = await User.findOne({ email });
 
@@ -200,6 +205,7 @@ const loginWithGithub = async (code) => {
         "An account with this email already exists. Please sign in with your password."
       );
     }
+
     const username = await generateUniqueUsername(
       githubProfile.login
     );
@@ -213,9 +219,9 @@ const loginWithGithub = async (code) => {
     });
   } else {
     user.avatar = githubProfile.avatar_url || user.avatar;
-
     await user.save();
   }
+
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
@@ -230,22 +236,24 @@ const loginWithGithub = async (code) => {
     },
   };
 };
+
+// Refresh an expired access token using a valid refresh token
 const refreshAccessToken = (refreshToken) => {
   try {
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.REFRESH_TOKEN_SECRET
-    );
+    if (!refreshToken) {
+      throw new Error("Refresh token is required");
+    }
 
-    const accessToken = generateAccessToken(
-      decoded.userId
-    );
+    // Verify using JWT_REFRESH_SECRET through the shared helper
+    const decoded = verifyRefreshToken(refreshToken);
 
-    return accessToken;
+    if (!decoded || !decoded.userId) {
+      throw new Error("Invalid refresh token payload");
+    }
+
+    return generateAccessToken(decoded.userId);
   } catch (error) {
-    throw new Error(
-      "Invalid or expired refresh token"
-    );
+    throw new Error("Invalid or expired refresh token");
   }
 };
 

@@ -130,8 +130,8 @@ const RegisterForm = ({ onSwitch }) => {
 
   const handleGithubRegister = () => {
     window.location.href = `${
-      import.meta.env.VITE_API_URL
-    }/api/auth/github`;
+      import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+    }/auth/github`;
   };
 
   const isLoading = registerMutation.isPending;
