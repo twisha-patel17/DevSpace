@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 
 const fileSchema = new mongoose.Schema(
@@ -63,12 +62,14 @@ const fileSchema = new mongoose.Schema(
   }
 );
 
+// Workspace paths must be unique.
 fileSchema.index(
   { workspace: 1, path: 1 },
   { unique: true }
 );
 
-fileSchema.pre("validate", function (next) {
+// Normalize paths and validate file/folder names before validation completes.
+fileSchema.pre("validate", function () {
   if (typeof this.name !== "string" || !this.name.trim()) {
     this.invalidate("name", "File or folder name is required");
   }
@@ -119,8 +120,7 @@ fileSchema.pre("validate", function (next) {
     this.content = "";
     this.language = null;
   }
-
-  next();
 });
 
 module.exports = mongoose.model("File", fileSchema);
+
