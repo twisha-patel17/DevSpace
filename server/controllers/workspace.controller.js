@@ -91,6 +91,9 @@ const getRecentWorkspacesController = async (req, res) => {
 
     return res.status(500).json({
       message: "Failed to fetch workspaces",
+      ...(process.env.NODE_ENV !== "production" && {
+        error: error.message,
+      }),
     });
   }
 };

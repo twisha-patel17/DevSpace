@@ -17,7 +17,7 @@ const RecentPage = () => {
         setLoading(true);
         setError("");
 
-        const response = await api.get("/api/workspaces/recent");
+        const response = await api.get("/workspaces/recent");
 
         setWorkspaces(response.data.workspaces || []);
       } catch (error) {

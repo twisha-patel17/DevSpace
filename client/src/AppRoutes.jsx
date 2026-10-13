@@ -10,6 +10,8 @@ import WorkspacesPage from "./pages/WorkspacesPage";
 import SharedWithMePage from "./pages/SharedWithMePage";
 import RecentPage from "./pages/RecentPage";
 import ProfilePage from "./pages/ProfilePage";
+import SettingsPage from "./pages/SettingsPage";
+import ActivityPage from "./pages/ActivityPage";
 
 import AppLayout from "./components/layout/AppLayout";
 
@@ -54,6 +56,10 @@ const AppRoutes = () => {
         element={<WorkspacePage />}
         />
         <Route path="/profile" element={<ProfilePage />} />
+
+        <Route path="/activity" element={<ActivityPage />} />
+
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

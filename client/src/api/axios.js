@@ -1,8 +1,19 @@
 import axios from "axios";
 import useAuthStore from "../store/authStore";
 
+const baseURL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
-baseURL: import.meta.env.VITE_API_URL,
+baseURL,
+headers: {
+"Content-Type": "application/json",
+},
+});
+
+// Separate instance for refreshing tokens.
+// It avoids running the refresh request through the normal API interceptors.
+const refreshApi = axios.create({
+baseURL,
 headers: {
 "Content-Type": "application/json",
 },
@@ -13,6 +24,7 @@ api.interceptors.request.use(
 const accessToken = useAuthStore.getState().accessToken;
 
 if (accessToken) {
+  config.headers = config.headers || {};
   config.headers.Authorization = `Bearer ${accessToken}`;
 }
 
@@ -26,26 +38,30 @@ let isRefreshing = false;
 let failedQueue = [];
 
 const processQueue = (error, token = null) => {
-failedQueue.forEach((request) => {
+failedQueue.forEach(({ resolve, reject }) => {
 if (error) {
-request.reject(error);
+reject(error);
 } else {
-request.resolve(token);
+resolve(token);
 }
 });
 
 failedQueue = [];
 };
 
+const redirectToLogin = () => {
+if (window.location.pathname !== "/login") {
+window.location.replace("/login");
+}
+};
+
 api.interceptors.response.use(
 (response) => response,
-
 async (error) => {
 const originalRequest = error.config;
 const status = error.response?.status;
 const requestUrl = originalRequest?.url || "";
 
-// Don't refresh tokens for login, registration, or refresh failures.
 const isAuthRequest =
   requestUrl.includes("/auth/login") ||
   requestUrl.includes("/auth/register") ||
@@ -60,79 +76,63 @@ if (
   return Promise.reject(error);
 }
 
-const {
-  refreshToken,
-  setAccessToken,
-  logout,
-} = useAuthStore.getState();
+const { refreshToken, setAccessToken, logout } =
+  useAuthStore.getState();
 
 if (!refreshToken) {
   logout();
-
-  if (window.location.pathname !== "/login") {
-    window.location.replace("/login");
-  }
-
+  redirectToLogin();
   return Promise.reject(error);
 }
 
+// Wait for the current refresh operation instead of starting another.
 if (isRefreshing) {
   return new Promise((resolve, reject) => {
     failedQueue.push({ resolve, reject });
-  })
-    .then((newAccessToken) => {
-      originalRequest.headers =
-        originalRequest.headers || {};
+  }).then((newAccessToken) => {
+    originalRequest.headers = originalRequest.headers || {};
+    originalRequest.headers.Authorization =
+      `Bearer ${newAccessToken}`;
 
-      originalRequest.headers.Authorization =
-        `Bearer ${newAccessToken}`;
-
-      return api(originalRequest);
-    })
-    .catch((refreshError) => Promise.reject(refreshError));
+    return api(originalRequest);
+  });
 }
 
 originalRequest._retry = true;
 isRefreshing = true;
 
 try {
-  const response = await api.post("/auth/refresh", {
+  const response = await refreshApi.post("/auth/refresh", {
     refreshToken,
   });
 
-  const newAccessToken = response.data.accessToken;
+  const newAccessToken = response.data?.accessToken;
 
   if (!newAccessToken) {
-    throw new Error("Refresh response did not contain an access token");
+    throw new Error(
+      "Refresh response did not contain an access token"
+    );
   }
 
   setAccessToken(newAccessToken);
 
   processQueue(null, newAccessToken);
 
-  originalRequest.headers =
-    originalRequest.headers || {};
-
+  originalRequest.headers = originalRequest.headers || {};
   originalRequest.headers.Authorization =
     `Bearer ${newAccessToken}`;
 
-  // Retry the request that originally failed.
-  return api(originalRequest);
+  return await api(originalRequest);
 } catch (refreshError) {
-  processQueue(refreshError, null);
+  processQueue(refreshError);
 
   logout();
-
-  if (window.location.pathname !== "/login") {
-    window.location.replace("/login");
-  }
+  redirectToLogin();
 
   return Promise.reject(refreshError);
 } finally {
   isRefreshing = false;
 }
-
-
 }
 );
 
