@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import {
   Search,
@@ -11,56 +12,96 @@ import {
   FolderKanban,
   Check,
   ArrowUpRight,
+  RefreshCw,
 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-const initialNotifications = [
-  {
-    id: 1,
-    type: "workspace",
-    title: "Workspace invitation",
-    message: "You've been invited to collaborate on a workspace.",
-    time: "10 min ago",
-    read: false,
-  },
-  {
-    id: 2,
-    type: "collaboration",
-    title: "New collaborator",
-    message: "A collaborator joined your development workspace.",
-    time: "1 hour ago",
-    read: false,
-  },
-  {
-    id: 3,
-    type: "file",
-    title: "File updated",
-    message: "A workspace file was recently updated.",
-    time: "3 hours ago",
-    read: true,
-  },
-];
+import {
+  getNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  deleteNotification,
+  clearNotifications,
+} from "../../api/notification.api";
 
 const notificationIcons = {
-  workspace: FolderKanban,
-  collaboration: Users,
-  file: FileCode2,
+  workspace_invitation: FolderKanban,
+  member_joined: Users,
+  member_removed: Users,
+  role_changed: Users,
+  file_created: FileCode2,
+  file_updated: FileCode2,
+  file_deleted: FileCode2,
+  workspace_updated: FolderKanban,
+  system: Bell,
+};
+
+const formatTime = (date) => {
+  if (!date) return "Recently";
+
+  const timestamp = new Date(date).getTime();
+
+  if (Number.isNaN(timestamp)) return "Recently";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+
+  return new Date(date).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 };
 
 const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
-  const [isNotificationsOpen, setIsNotificationsOpen] =
-    useState(false);
-
-  const [notifications, setNotifications] = useState(
-    initialNotifications
-  );
-
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationRef = useRef(null);
+  const queryClient = useQueryClient();
 
-  const unreadCount = notifications.filter(
-    (notification) => !notification.read
-  ).length;
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => getNotifications(1, 20),
+    enabled: isNotificationsOpen,
+    staleTime: 0,
+    retry: 1,
+  });
 
-  // Close the popover when clicking outside it.
+  const notifications = data?.notifications ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
+
+  const refreshNotifications = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["notifications"],
+    });
+
+  const markReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: refreshNotifications,
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onSuccess: refreshNotifications,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: refreshNotifications,
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: clearNotifications,
+    onSuccess: refreshNotifications,
+  });
+
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (
@@ -81,60 +122,42 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
     document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener(
-        "mousedown",
-        handleOutsideClick
-      );
+      document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("keydown", handleEscape);
     };
   }, []);
 
   const markAsRead = (id) => {
-    setNotifications((current) =>
-      current.map((notification) =>
-        notification.id === id
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
+    if (id) markReadMutation.mutate(id);
   };
 
   const markAllAsRead = () => {
-    setNotifications((current) =>
-      current.map((notification) => ({
-        ...notification,
-        read: true,
-      }))
-    );
+    markAllReadMutation.mutate();
   };
 
   const dismissNotification = (id) => {
-    setNotifications((current) =>
-      current.filter((notification) => notification.id !== id)
-    );
+    if (id) deleteMutation.mutate(id);
   };
 
   const clearAllNotifications = () => {
-    setNotifications([]);
+    clearMutation.mutate();
   };
+
+  const isUpdating =
+    markReadMutation.isPending ||
+    markAllReadMutation.isPending ||
+    deleteMutation.isPending ||
+    clearMutation.isPending;
 
   return (
     <header
       className="
-        sticky top-0 z-40
-        h-[76px]
+        sticky top-0 z-40 h-[76px]
         border-b border-white/[0.06]
-        bg-[#090a0b]/90
-        backdrop-blur-2xl
+        bg-[#090a0b]/90 backdrop-blur-2xl
       "
     >
-      <div
-        className="
-          flex h-full items-center
-          justify-between gap-4
-          px-4 sm:px-6 lg:px-8
-        "
-      >
+      <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         {/* Left section */}
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -161,8 +184,7 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                 className="
                   pointer-events-none absolute left-3.5 top-1/2
                   -translate-y-1/2 text-zinc-600
-                  transition-colors
-                  group-focus-within:text-[#dc9458]
+                  transition-colors group-focus-within:text-[#dc9458]
                 "
               />
 
@@ -170,16 +192,11 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                 type="text"
                 placeholder="Search workspaces, files, members..."
                 className="
-                  h-10 w-full rounded-lg
-                  border border-white/[0.07]
-                  bg-[#101113] pl-10 pr-16
-                  text-[12px] text-zinc-300
-                  outline-none placeholder:text-zinc-600
-                  transition
-                  hover:border-white/[0.11]
-                  focus:border-[#dc9458]/30
-                  focus:bg-[#121315]
-                  focus:ring-4 focus:ring-[#dc9458]/[0.04]
+                  h-10 w-full rounded-lg border border-white/[0.07]
+                  bg-[#101113] pl-10 pr-16 text-[12px] text-zinc-300
+                  outline-none placeholder:text-zinc-600 transition
+                  hover:border-white/[0.11] focus:border-[#dc9458]/30
+                  focus:bg-[#121315] focus:ring-4 focus:ring-[#dc9458]/[0.04]
                 "
               />
 
@@ -209,7 +226,6 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
             >
               D
             </div>
-
             <span className="text-[14px] font-bold tracking-tight text-[#e9e9ea]">
               DevSpace
             </span>
@@ -258,11 +274,9 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
               {unreadCount > 0 && (
                 <span
                   className="
-                    absolute -right-1 -top-1
-                    flex h-[17px] min-w-[17px]
-                    items-center justify-center
-                    rounded-full border-2 border-[#090a0b]
-                    bg-[#dc9458] px-1
+                    absolute -right-1 -top-1 flex h-[17px] min-w-[17px]
+                    items-center justify-center rounded-full
+                    border-2 border-[#090a0b] bg-[#dc9458] px-1
                     text-[9px] font-bold text-[#17110d]
                   "
                 >
@@ -271,19 +285,15 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
               )}
             </button>
 
-            {/* Notification dropdown */}
             {isNotificationsOpen && (
               <div
                 role="dialog"
                 aria-label="Notifications"
                 className="
-                  absolute right-0 top-[calc(100%+14px)]
-                  z-50 w-[min(380px,calc(100vw-24px))]
-                  overflow-hidden rounded-xl
-                  border border-white/[0.09]
-                  bg-[#101113]
-                  shadow-[0_20px_70px_rgba(0,0,0,0.55)]
-                  animate-in fade-in slide-in-from-top-2 duration-200
+                  absolute right-0 top-[calc(100%+14px)] z-50
+                  w-[min(380px,calc(100vw-24px))]
+                  overflow-hidden rounded-xl border border-white/[0.09]
+                  bg-[#101113] shadow-[0_20px_70px_rgba(0,0,0,0.55)]
                 "
               >
                 {/* Header */}
@@ -310,18 +320,14 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                     type="button"
                     onClick={() => setIsNotificationsOpen(false)}
                     aria-label="Close notifications"
-                    className="
-                      rounded-md p-1.5 text-zinc-500
-                      transition hover:bg-white/[0.06]
-                      hover:text-zinc-200
-                    "
+                    className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
                   >
                     <X size={15} />
                   </button>
                 </div>
 
                 {/* Actions */}
-                {notifications.length > 0 && (
+                {!isLoading && !isError && notifications.length > 0 && (
                   <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-2.5">
                     <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">
                       Recent activity
@@ -332,11 +338,8 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                         <button
                           type="button"
                           onClick={markAllAsRead}
-                          className="
-                            flex items-center gap-1.5
-                            text-[10px] font-medium text-zinc-400
-                            transition hover:text-[#dc9458]
-                          "
+                          disabled={isUpdating}
+                          className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-400 transition hover:text-[#dc9458] disabled:opacity-50"
                         >
                           <CheckCheck size={13} />
                           Mark all read
@@ -346,10 +349,8 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                       <button
                         type="button"
                         onClick={clearAllNotifications}
-                        className="
-                          text-[10px] font-medium text-zinc-500
-                          transition hover:text-red-400
-                        "
+                        disabled={isUpdating}
+                        className="text-[10px] font-medium text-zinc-500 transition hover:text-red-400 disabled:opacity-50"
                       >
                         Clear all
                       </button>
@@ -359,34 +360,53 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
 
                 {/* Notification list */}
                 <div className="max-h-[360px] overflow-y-auto">
-                  {notifications.length > 0 ? (
+                  {isLoading ? (
+                    <div className="px-6 py-12 text-center">
+                      <RefreshCw
+                        size={19}
+                        className="mx-auto animate-spin text-[#dc9458]"
+                      />
+                      <p className="mt-3 text-[12px] text-zinc-500">
+                        Loading notifications...
+                      </p>
+                    </div>
+                  ) : isError ? (
+                    <div className="px-6 py-10 text-center">
+                      <p className="text-[12px] text-zinc-300">
+                        Couldn't load notifications.
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        Check your connection and try again.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => refetch()}
+                        className="mt-3 text-[11px] text-[#dc9458] hover:underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : notifications.length > 0 ? (
                     notifications.map((notification) => {
                       const Icon =
-                        notificationIcons[notification.type] ||
-                        Bell;
+                        notificationIcons[notification.type] || Bell;
+                      const isRead = Boolean(notification.readAt);
 
                       return (
                         <div
-                          key={notification.id}
+                          key={notification._id}
                           className={`
                             group relative flex gap-3 border-b
                             border-white/[0.04] px-4 py-4
                             transition-colors hover:bg-white/[0.025]
                             ${
-                              !notification.read
+                              !isRead
                                 ? "bg-[#dc9458]/[0.025]"
                                 : ""
                             }
                           `}
                         >
-                          <div
-                            className="
-                              flex h-9 w-9 shrink-0
-                              items-center justify-center
-                              rounded-lg border border-white/[0.06]
-                              bg-[#191a1c] text-[#dc9458]
-                            "
-                          >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-[#191a1c] text-[#dc9458]">
                             <Icon size={16} strokeWidth={1.7} />
                           </div>
 
@@ -396,7 +416,7 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                                 {notification.title}
                               </p>
 
-                              {!notification.read && (
+                              {!isRead && (
                                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#dc9458]" />
                               )}
                             </div>
@@ -405,26 +425,28 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                               {notification.message}
                             </p>
 
+                            {notification.workspace?.name && (
+                              <p className="mt-1.5 truncate text-[10px] text-zinc-600">
+                                {notification.workspace.name}
+                              </p>
+                            )}
+
                             <div className="mt-2.5 flex items-center justify-between">
                               <span className="text-[10px] text-zinc-600">
-                                {notification.time}
+                                {formatTime(notification.createdAt)}
                               </span>
 
                               <div className="flex items-center gap-2 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
-                                {!notification.read && (
+                                {!isRead && (
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      markAsRead(notification.id)
+                                      markAsRead(notification._id)
                                     }
+                                    disabled={isUpdating}
                                     aria-label="Mark as read"
                                     title="Mark as read"
-                                    className="
-                                      rounded-md p-1.5
-                                      text-zinc-500 transition
-                                      hover:bg-white/[0.07]
-                                      hover:text-[#dc9458]
-                                    "
+                                    className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.07] hover:text-[#dc9458] disabled:opacity-50"
                                   >
                                     <Check size={13} />
                                   </button>
@@ -433,16 +455,12 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    dismissNotification(notification.id)
+                                    dismissNotification(notification._id)
                                   }
+                                  disabled={isUpdating}
                                   aria-label="Dismiss notification"
                                   title="Dismiss"
-                                  className="
-                                    rounded-md p-1.5
-                                    text-zinc-600 transition
-                                    hover:bg-white/[0.07]
-                                    hover:text-red-400
-                                  "
+                                  className="rounded-md p-1.5 text-zinc-600 transition hover:bg-white/[0.07] hover:text-red-400 disabled:opacity-50"
                                 >
                                   <X size={13} />
                                 </button>
@@ -467,7 +485,7 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                       </h4>
 
                       <p className="mt-1.5 max-w-[230px] text-[11px] leading-5 text-zinc-500">
-                        No notifications here. New workspace activity
+                        No notifications yet. New workspace activity
                         will appear here when available.
                       </p>
                     </div>
@@ -475,7 +493,7 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                 </div>
 
                 {/* Footer */}
-                {notifications.length > 0 && (
+                {!isLoading && !isError && notifications.length > 0 && (
                   <div className="border-t border-white/[0.06] px-4 py-3">
                     <button
                       type="button"
@@ -486,9 +504,9 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
                       className="
                         flex w-full items-center justify-center gap-2
                         rounded-lg border border-white/[0.07]
-                        bg-white/[0.02] py-2.5
-                        text-[11px] font-medium text-zinc-400
-                        transition hover:border-[#dc9458]/25
+                        bg-white/[0.02] py-2.5 text-[11px]
+                        font-medium text-zinc-400 transition
+                        hover:border-[#dc9458]/25
                         hover:bg-[#dc9458]/[0.04]
                         hover:text-[#dc9458]
                       "
@@ -508,4 +526,5 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
 };
 
 export default Topbar;
+
 

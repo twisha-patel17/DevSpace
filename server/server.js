@@ -12,6 +12,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const workspaceRoutes = require("./routes/workspace.routes");
 const executionRoutes = require("./routes/execution.routes");
+const notificationRoutes = require("./routes/notification.routes");
 
 const initializeSocket = require("./sockets/socket");
 
@@ -35,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/execution", executionRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({
