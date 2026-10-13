@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { FaGithub } from "react-icons/fa";
 
 import { loginUser } from "../../api/auth.api";
 import useAuthStore from "../../store/authStore";
@@ -281,22 +282,18 @@ const LoginForm = ({ onSwitch }) => {
         <div className="h-px flex-1 bg-[#222225]" />
       </div>
 
-      <button
-        type="button"
-        onClick={handleGithubLogin}
-        disabled={isLoading}
-        className="flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] text-sm font-medium text-gray-300 transition hover:bg-[#151518] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-5 w-5 fill-current"
-          aria-hidden="true"
-        >
-          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.42-1.305.763-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.21 0 1.595-.015 2.875-.015 3.265 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12Z" />
-        </svg>
-
-        Continue with GitHub
-      </button>
+<button
+  type="button"
+  onClick={handleGithubLogin}
+  disabled={isLoading}
+  className="flex h-11 w-full items-center justify-center gap-3 rounded-lg border border-[#29292d] bg-[#111113] text-sm font-medium text-gray-300 transition-all duration-200 hover:border-[#414146] hover:bg-[#19191c] hover:text-white active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+>
+  <FaGithub
+    className="h-5 w-5 shrink-0"
+    aria-hidden="true"
+  />
+  <span>Continue with GitHub</span>
+</button>
 
       <p className="mt-7 text-center text-sm text-gray-500">
         Don't have an account?{" "}
