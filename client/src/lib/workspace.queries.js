@@ -1,3 +1,4 @@
+
 import {
   useMutation,
   useQuery,
@@ -16,6 +17,9 @@ import {
   createWorkspaceFile,
   updateWorkspaceFile,
   deleteWorkspaceFile,
+  addWorkspaceMember,
+  updateWorkspaceMemberRole,
+  removeWorkspaceMember,
 } from "../api/workspace.api";
 
 export const workspaceKeys = {
@@ -148,6 +152,48 @@ export const useDeleteWorkspace = () => {
   });
 };
 
+export const useAddWorkspaceMember = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: addWorkspaceMember,
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.all,
+      });
+    },
+  });
+};
+
+export const useUpdateWorkspaceMemberRole = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateWorkspaceMemberRole,
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.all,
+      });
+    },
+  });
+};
+
+export const useRemoveWorkspaceMember = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: removeWorkspaceMember,
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.all,
+      });
+    },
+  });
+};
+
 export const useCreateWorkspaceFile = () => {
   const queryClient = useQueryClient();
 
@@ -204,15 +250,18 @@ export const useDeleteWorkspaceFile = () => {
   return useMutation({
     mutationFn: deleteWorkspaceFile,
 
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       const workspaceId = variables.workspaceId;
-      const deletedFileId = variables.fileId;
+
+      const deletedFileIds = result?.fileIds?.length
+        ? result.fileIds
+        : [variables.fileId];
 
       queryClient.setQueryData(
         workspaceKeys.files(workspaceId),
         (oldFiles = []) => {
           return oldFiles.filter(
-            (file) => file._id !== deletedFileId
+            (file) => !deletedFileIds.includes(file._id)
           );
         }
       );

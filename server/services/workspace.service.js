@@ -93,14 +93,31 @@ const getRecentWorkspaces = async (userId) => {
     .limit(20);
 };
 
+
 const getSharedWorkspaces = async (userId) => {
-  return Workspace.find({
+  const workspaces = await Workspace.find({
     owner: { $ne: userId },
     "members.user": userId,
   })
     .populate("owner", "username email avatar")
     .populate("members.user", "username email avatar")
-    .sort({ updatedAt: -1 });
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  return workspaces.map((workspace) => {
+    const currentMember = workspace.members?.find((member) => {
+      const memberUserId = member.user?._id || member.user;
+
+      return memberUserId?.toString() === userId.toString();
+    });
+
+    return {
+      ...workspace,
+      role: currentMember?.role || "viewer",
+      memberRole: currentMember?.role || "viewer",
+      currentUserId: userId.toString(),
+    };
+  });
 };
 
 const getWorkspaceById = async ({ workspaceId, userId }) => {
