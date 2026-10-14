@@ -1,5 +1,18 @@
-
 const Notification = require("../models/notification.model");
+
+let socketIO = null;
+
+const setSocketIO = (io) => {
+  socketIO = io;
+};
+
+const normalizeUserId = (userId) => {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  return userId.toString();
+};
 
 const createNotification = async ({
   recipient,
@@ -10,8 +23,10 @@ const createNotification = async ({
   message,
   metadata = {},
 }) => {
+  const recipientId = normalizeUserId(recipient);
+
   const notification = await Notification.create({
-    recipient,
+    recipient: recipientId,
     actor,
     workspace,
     type,
@@ -20,9 +35,32 @@ const createNotification = async ({
     metadata,
   });
 
-  return Notification.findById(notification._id)
+  const populatedNotification = await Notification.findById(
+    notification._id
+  )
     .populate("actor", "username avatar")
     .populate("workspace", "name");
+
+  if (socketIO && populatedNotification) {
+    try {
+      const unreadCount = await getUnreadCount(recipientId);
+
+      socketIO
+        .to(`user:${recipientId}`)
+        .emit("notification:new", {
+          notification: populatedNotification,
+          unreadCount,
+        });
+    } catch (error) {
+     
+      console.error(
+        "Failed to emit new notification:",
+        error.message
+      );
+    }
+  }
+
+  return populatedNotification;
 };
 
 const getNotifications = async ({
@@ -30,13 +68,15 @@ const getNotifications = async ({
   page = 1,
   limit = 20,
 }) => {
+  const recipientId = normalizeUserId(userId);
+
   const safePage = Math.max(1, Number(page) || 1);
   const safeLimit = Math.min(
     50,
     Math.max(1, Number(limit) || 20)
   );
 
-  const filter = { recipient: userId };
+  const filter = { recipient: recipientId };
 
   const [notifications, total, unreadCount] = await Promise.all([
     Notification.find(filter)
@@ -68,8 +108,10 @@ const getNotifications = async ({
 };
 
 const getUnreadCount = async (userId) => {
+  const recipientId = normalizeUserId(userId);
+
   return Notification.countDocuments({
-    recipient: userId,
+    recipient: recipientId,
     readAt: null,
   });
 };
@@ -78,10 +120,12 @@ const markNotificationAsRead = async ({
   notificationId,
   userId,
 }) => {
+  const recipientId = normalizeUserId(userId);
+
   return Notification.findOneAndUpdate(
     {
       _id: notificationId,
-      recipient: userId,
+      recipient: recipientId,
     },
     {
       $set: { readAt: new Date() },
@@ -93,9 +137,11 @@ const markNotificationAsRead = async ({
 };
 
 const markAllNotificationsAsRead = async (userId) => {
+  const recipientId = normalizeUserId(userId);
+
   const result = await Notification.updateMany(
     {
-      recipient: userId,
+      recipient: recipientId,
       readAt: null,
     },
     {
@@ -110,21 +156,26 @@ const deleteNotification = async ({
   notificationId,
   userId,
 }) => {
+  const recipientId = normalizeUserId(userId);
+
   return Notification.findOneAndDelete({
     _id: notificationId,
-    recipient: userId,
+    recipient: recipientId,
   });
 };
 
 const clearNotifications = async (userId) => {
+  const recipientId = normalizeUserId(userId);
+
   const result = await Notification.deleteMany({
-    recipient: userId,
+    recipient: recipientId,
   });
 
   return result.deletedCount;
 };
 
 module.exports = {
+  setSocketIO,
   createNotification,
   getNotifications,
   getUnreadCount,

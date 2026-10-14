@@ -56,7 +56,6 @@ const EmptyState = ({ searching, onClear }) => (
       )}
     </div>
 
-```
 <h3 className="text-base font-semibold text-[#e9e2da]">
   {searching ? "No matching activity" : "Your timeline starts here"}
 </h3>
@@ -82,8 +81,6 @@ const EmptyState = ({ searching, onClear }) => (
     Waiting for recorded events
   </div>
 )}
-```
-
   </div>
 );
 
@@ -156,7 +153,6 @@ return ( <div className="mx-auto w-full max-w-6xl px-5 py-8 text-[#e9e2da] sm:px
 {/* Page heading */} <div className="mb-8"> <p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-[#dc9458]">
 Workspace history </p>
 
-```
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-[#f2eee9] sm:text-4xl">

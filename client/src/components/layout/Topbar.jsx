@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import {
   Search,
@@ -24,6 +23,8 @@ import {
   clearNotifications,
 } from "../../api/notification.api";
 
+import socket from "../../socket";
+
 const notificationIcons = {
   workspace_invitation: FolderKanban,
   member_joined: Users,
@@ -43,7 +44,10 @@ const formatTime = (date) => {
 
   if (Number.isNaN(timestamp)) return "Recently";
 
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - timestamp) / 1000)
+  );
 
   if (seconds < 60) return "Just now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -61,6 +65,8 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
   const notificationRef = useRef(null);
   const queryClient = useQueryClient();
 
+  // Fetch notifications on mount so the unread badge works
+  // even when the dropdown has never been opened.
   const {
     data,
     isLoading,
@@ -69,9 +75,9 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
   } = useQuery({
     queryKey: ["notifications"],
     queryFn: () => getNotifications(1, 20),
-    enabled: isNotificationsOpen,
     staleTime: 0,
     retry: 1,
+    refetchOnWindowFocus: true,
   });
 
   const notifications = data?.notifications ?? [];
@@ -82,26 +88,66 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
       queryKey: ["notifications"],
     });
 
-  const markReadMutation = useMutation({
-    mutationFn: markNotificationAsRead,
-    onSuccess: refreshNotifications,
-  });
+  // Receive notifications from the authenticated Socket.IO connection.
+  useEffect(() => {
+    const handleNewNotification = (payload) => {
+      const newNotification = payload?.notification;
 
-  const markAllReadMutation = useMutation({
-    mutationFn: markAllNotificationsAsRead,
-    onSuccess: refreshNotifications,
-  });
+      if (!newNotification?._id) return;
 
-  const deleteMutation = useMutation({
-    mutationFn: deleteNotification,
-    onSuccess: refreshNotifications,
-  });
+      queryClient.setQueryData(["notifications"], (previous) => {
+        if (!previous) {
+          // The background query will fetch the current server state.
+          return previous;
+        }
 
-  const clearMutation = useMutation({
-    mutationFn: clearNotifications,
-    onSuccess: refreshNotifications,
-  });
+        const alreadyExists = (previous.notifications ?? []).some(
+          (item) => item._id === newNotification._id
+        );
 
+        if (alreadyExists) {
+          return {
+            ...previous,
+            unreadCount:
+              typeof payload.unreadCount === "number"
+                ? payload.unreadCount
+                : previous.unreadCount,
+          };
+        }
+
+        return {
+          ...previous,
+          notifications: [
+            newNotification,
+            ...(previous.notifications ?? []),
+          ].slice(0, 20),
+          unreadCount:
+            typeof payload.unreadCount === "number"
+              ? payload.unreadCount
+              : (previous.unreadCount ?? 0) + 1,
+          pagination: previous.pagination
+            ? {
+                ...previous.pagination,
+                total: (previous.pagination.total ?? 0) + 1,
+              }
+            : previous.pagination,
+        };
+      });
+
+      // Reconcile with persisted server data.
+      queryClient.invalidateQueries({
+        queryKey: ["notifications"],
+      });
+    };
+
+    socket.on("notification:new", handleNewNotification);
+
+    return () => {
+      socket.off("notification:new", handleNewNotification);
+    };
+  }, [queryClient]);
+
+  // Close the dropdown on outside click or Escape.
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (
@@ -126,6 +172,26 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
       document.removeEventListener("keydown", handleEscape);
     };
   }, []);
+
+  const markReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: refreshNotifications,
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onSuccess: refreshNotifications,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: refreshNotifications,
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: clearNotifications,
+    onSuccess: refreshNotifications,
+  });
 
   const markAsRead = (id) => {
     if (id) markReadMutation.mutate(id);
@@ -255,9 +321,9 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
               aria-label={`Notifications, ${unreadCount} unread`}
               aria-haspopup="dialog"
               aria-expanded={isNotificationsOpen}
-              onClick={() =>
-                setIsNotificationsOpen((current) => !current)
-              }
+              onClick={() => {
+                setIsNotificationsOpen((current) => !current);
+              }}
               className={`
                 relative flex h-10 w-10 items-center justify-center
                 rounded-lg border bg-[#101113]
@@ -526,5 +592,6 @@ const Topbar = ({ onMenuClick, onViewAllNotifications }) => {
 };
 
 export default Topbar;
+
 
 

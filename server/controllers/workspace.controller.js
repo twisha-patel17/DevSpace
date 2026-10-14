@@ -1,4 +1,3 @@
-
 const {
   createWorkspace,
   getUserWorkspaces,
@@ -17,7 +16,93 @@ const {
   removeWorkspaceMember,
 } = require("../services/workspace.service");
 
+const {
+  createNotification,
+} = require("../services/notification.service");
+
+const Workspace = require("../models/workspace.model");
+const File = require("../models/file.model");
 const mongoose = require("mongoose");
+
+const createWorkspaceNotification = async ({
+  recipient,
+  actor,
+  workspaceId,
+  type,
+  title,
+  message,
+}) => {
+  try {
+    await createNotification({
+      recipient,
+      actor,
+      workspace: workspaceId,
+      type,
+      title,
+      message,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to create workspace notification:",
+      error.message
+    );
+  }
+};
+
+// Notify workspace collaborators, excluding the user who performed
+// the action. This helper never fails the original workspace operation.
+const notifyWorkspaceMembers = async ({
+  workspaceId,
+  actorId,
+  type,
+  title,
+  message,
+}) => {
+  try {
+    const workspace = await Workspace.findById(workspaceId)
+      .select("name owner members.user")
+      .lean();
+
+    if (!workspace) return;
+
+    const recipientIds = new Set();
+
+    if (workspace.owner) {
+      recipientIds.add(workspace.owner.toString());
+    }
+
+    for (const member of workspace.members || []) {
+      const memberId = member.user?._id || member.user;
+
+      if (memberId) {
+        recipientIds.add(memberId.toString());
+      }
+    }
+
+    recipientIds.delete(actorId.toString());
+
+    await Promise.all(
+      [...recipientIds].map((recipient) =>
+        createWorkspaceNotification({
+          recipient,
+          actor: actorId,
+          workspaceId,
+          type,
+          title,
+          message:
+            typeof message === "function"
+              ? message(workspace.name)
+              : message,
+        })
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Failed to notify workspace members:",
+      error.message
+    );
+  }
+};
 
 // Broadcast successful file-tree changes to workspace collaborators.
 const emitWorkspaceFilesChanged = (req, workspaceId, payload) => {
@@ -35,9 +120,11 @@ const emitWorkspaceFilesChanged = (req, workspaceId, payload) => {
   });
 };
 
+// CREATE WORKSPACE
 const createWorkspaceController = async (req, res) => {
   try {
-    const { name, description, template, language, visibility } = req.body;
+    const { name, description, template, language, visibility } =
+      req.body;
 
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
@@ -67,6 +154,7 @@ const createWorkspaceController = async (req, res) => {
   }
 };
 
+// GET WORKSPACES
 const getWorkspacesController = async (req, res) => {
   try {
     const workspaces = await getUserWorkspaces(req.user.userId);
@@ -112,6 +200,7 @@ const getSharedWorkspacesController = async (req, res) => {
   }
 };
 
+// GET WORKSPACE BY ID
 const getWorkspaceController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -137,6 +226,7 @@ const getWorkspaceController = async (req, res) => {
   }
 };
 
+// UPDATE WORKSPACE
 const updateWorkspaceController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -174,6 +264,15 @@ const updateWorkspaceController = async (req, res) => {
       });
     }
 
+    await notifyWorkspaceMembers({
+      workspaceId,
+      actorId: req.user.userId,
+      type: "workspace_updated",
+      title: "Workspace updated",
+      message: (workspaceName) =>
+        `"${workspaceName}" workspace settings were updated.`,
+    });
+
     return res.status(200).json({
       message: "Workspace updated successfully",
       workspace,
@@ -187,6 +286,7 @@ const updateWorkspaceController = async (req, res) => {
   }
 };
 
+// DELETE WORKSPACE
 const deleteWorkspaceController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -214,6 +314,7 @@ const deleteWorkspaceController = async (req, res) => {
   }
 };
 
+// MARK WORKSPACE AS OPENED
 const markWorkspaceOpenedController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -242,6 +343,7 @@ const markWorkspaceOpenedController = async (req, res) => {
   }
 };
 
+// GET WORKSPACE FILES
 const getWorkspaceFilesController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -273,10 +375,12 @@ const getWorkspaceFilesController = async (req, res) => {
   }
 };
 
+// CREATE FILE OR FOLDER
 const createWorkspaceFileController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { name, language, content, path, type, parent } = req.body;
+    const actorId = req.user.userId;
 
     if (!mongoose.isValidObjectId(workspaceId)) {
       return res.status(400).json({
@@ -300,10 +404,7 @@ const createWorkspaceFileController = async (req, res) => {
       });
     }
 
-    if (
-      content !== undefined &&
-      typeof content !== "string"
-    ) {
+    if (content !== undefined && typeof content !== "string") {
       return res.status(400).json({
         message: "File content must be a string",
       });
@@ -340,7 +441,7 @@ const createWorkspaceFileController = async (req, res) => {
 
     const result = await createWorkspaceFile({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       name: name.trim(),
       language,
       content,
@@ -361,10 +462,20 @@ const createWorkspaceFileController = async (req, res) => {
       });
     }
 
-    // Broadcast only after the file has been created successfully.
     emitWorkspaceFilesChanged(req, workspaceId, {
       action: "created",
       fileId: result._id.toString(),
+    });
+
+    const isFolder = result.type === "folder";
+
+    await notifyWorkspaceMembers({
+      workspaceId,
+      actorId,
+      type: "file_created",
+      title: isFolder ? "Folder created" : "File created",
+      message: (workspaceName) =>
+        `${isFolder ? "A folder" : "A file"} "${result.name}" was created in "${workspaceName}".`,
     });
 
     return res.status(201).json({
@@ -401,10 +512,12 @@ const createWorkspaceFileController = async (req, res) => {
   }
 };
 
+// UPDATE FILE OR FOLDER
 const updateWorkspaceFileController = async (req, res) => {
   try {
     const { workspaceId, fileId } = req.params;
     const { name, language, content, path } = req.body;
+    const actorId = req.user.userId;
 
     if (
       !mongoose.isValidObjectId(workspaceId) ||
@@ -430,10 +543,7 @@ const updateWorkspaceFileController = async (req, res) => {
       });
     }
 
-    if (
-      content !== undefined &&
-      typeof content !== "string"
-    ) {
+    if (content !== undefined && typeof content !== "string") {
       return res.status(400).json({
         message: "File content must be a string",
       });
@@ -449,9 +559,16 @@ const updateWorkspaceFileController = async (req, res) => {
       });
     }
 
+    // Capture the old metadata so ordinary content saves do not
+    // generate repeated notifications for collaborators.
+    const existingFile = await File.findOne({
+      _id: fileId,
+      workspace: workspaceId,
+    }).select("name path type");
+
     const result = await updateWorkspaceFile({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       fileId,
       name: name === undefined ? undefined : name.trim(),
       language,
@@ -477,11 +594,28 @@ const updateWorkspaceFileController = async (req, res) => {
       });
     }
 
-    // A rename can affect descendants, so the frontend will refresh the tree.
     emitWorkspaceFilesChanged(req, workspaceId, {
       action: "updated",
       fileId: result._id.toString(),
     });
+
+    const metadataChanged =
+      existingFile &&
+      (existingFile.name !== result.name ||
+        existingFile.path !== result.path);
+
+    if (metadataChanged) {
+      const isFolder = result.type === "folder";
+
+      await notifyWorkspaceMembers({
+        workspaceId,
+        actorId,
+        type: "file_updated",
+        title: isFolder ? "Folder renamed" : "File updated",
+        message: (workspaceName) =>
+          `${isFolder ? "A folder" : "A file"} is now named "${result.name}" in "${workspaceName}".`,
+      });
+    }
 
     return res.status(200).json({
       message: "File or folder updated successfully",
@@ -520,9 +654,11 @@ const updateWorkspaceFileController = async (req, res) => {
   }
 };
 
+// DELETE FILE OR FOLDER
 const deleteWorkspaceFileController = async (req, res) => {
   try {
     const { workspaceId, fileId } = req.params;
+    const actorId = req.user.userId;
 
     if (
       !mongoose.isValidObjectId(workspaceId) ||
@@ -533,9 +669,15 @@ const deleteWorkspaceFileController = async (req, res) => {
       });
     }
 
+    // Capture metadata before deletion.
+    const fileToDelete = await File.findOne({
+      _id: fileId,
+      workspace: workspaceId,
+    }).select("name type");
+
     const result = await deleteWorkspaceFile({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       fileId,
     });
 
@@ -557,12 +699,24 @@ const deleteWorkspaceFileController = async (req, res) => {
       });
     }
 
-    // Broadcast after deletion, including descendants of deleted folders.
     emitWorkspaceFilesChanged(req, workspaceId, {
       action: "deleted",
       fileId,
       fileIds: result.fileIds,
     });
+
+    if (fileToDelete) {
+      const isFolder = fileToDelete.type === "folder";
+
+      await notifyWorkspaceMembers({
+        workspaceId,
+        actorId,
+        type: "file_deleted",
+        title: isFolder ? "Folder deleted" : "File deleted",
+        message: (workspaceName) =>
+          `${isFolder ? "The folder" : "The file"} "${fileToDelete.name}" was deleted from "${workspaceName}".`,
+      });
+    }
 
     return res.status(200).json({
       message: "File or folder deleted successfully",
@@ -578,20 +732,19 @@ const deleteWorkspaceFileController = async (req, res) => {
   }
 };
 
+// ADD MEMBER
 const addWorkspaceMemberController = async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { userId: memberUserId, role } = req.body;
+    const actorId = req.user.userId;
 
-    if (!memberUserId) {
+    if (
+      !mongoose.isValidObjectId(workspaceId) ||
+      !mongoose.isValidObjectId(memberUserId)
+    ) {
       return res.status(400).json({
-        message: "User ID is required",
-      });
-    }
-
-    if (!role) {
-      return res.status(400).json({
-        message: "Member role is required",
+        message: "Invalid workspace ID or user ID",
       });
     }
 
@@ -603,7 +756,7 @@ const addWorkspaceMemberController = async (req, res) => {
 
     const workspace = await addWorkspaceMember({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       memberUserId,
       role,
     });
@@ -638,6 +791,19 @@ const addWorkspaceMemberController = async (req, res) => {
       });
     }
 
+    const workspaceDetails = await Workspace.findById(workspaceId)
+      .select("name")
+      .lean();
+
+    await createWorkspaceNotification({
+      recipient: memberUserId,
+      actor: actorId,
+      workspaceId,
+      type: "workspace_invitation",
+      title: "Added to a workspace",
+      message: `You were added to "${workspaceDetails?.name || "a workspace"}" as a ${role}.`,
+    });
+
     return res.status(201).json({
       message: "Member added successfully",
       workspace,
@@ -651,14 +817,19 @@ const addWorkspaceMemberController = async (req, res) => {
   }
 };
 
+// UPDATE MEMBER ROLE
 const updateWorkspaceMemberRoleController = async (req, res) => {
   try {
     const { workspaceId, memberUserId } = req.params;
     const { role } = req.body;
+    const actorId = req.user.userId;
 
-    if (!role) {
+    if (
+      !mongoose.isValidObjectId(workspaceId) ||
+      !mongoose.isValidObjectId(memberUserId)
+    ) {
       return res.status(400).json({
-        message: "Member role is required",
+        message: "Invalid workspace ID or member ID",
       });
     }
 
@@ -670,7 +841,7 @@ const updateWorkspaceMemberRoleController = async (req, res) => {
 
     const workspace = await updateWorkspaceMemberRole({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       memberUserId,
       role,
     });
@@ -699,6 +870,19 @@ const updateWorkspaceMemberRoleController = async (req, res) => {
       });
     }
 
+    const workspaceDetails = await Workspace.findById(workspaceId)
+      .select("name")
+      .lean();
+
+    await createWorkspaceNotification({
+      recipient: memberUserId,
+      actor: actorId,
+      workspaceId,
+      type: "role_changed",
+      title: "Workspace role updated",
+      message: `Your role in "${workspaceDetails?.name || "a workspace"}" was changed to ${role}.`,
+    });
+
     return res.status(200).json({
       message: "Member role updated successfully",
       workspace,
@@ -712,13 +896,28 @@ const updateWorkspaceMemberRoleController = async (req, res) => {
   }
 };
 
+// REMOVE MEMBER
 const removeWorkspaceMemberController = async (req, res) => {
   try {
     const { workspaceId, memberUserId } = req.params;
+    const actorId = req.user.userId;
+
+    if (
+      !mongoose.isValidObjectId(workspaceId) ||
+      !mongoose.isValidObjectId(memberUserId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid workspace ID or member ID",
+      });
+    }
+
+    const workspaceDetails = await Workspace.findById(workspaceId)
+      .select("name")
+      .lean();
 
     const result = await removeWorkspaceMember({
       workspaceId,
-      userId: req.user.userId,
+      userId: actorId,
       memberUserId,
     });
 
@@ -739,6 +938,15 @@ const removeWorkspaceMemberController = async (req, res) => {
         message: "Workspace member not found",
       });
     }
+
+    await createWorkspaceNotification({
+      recipient: memberUserId,
+      actor: actorId,
+      workspaceId,
+      type: "member_removed",
+      title: "Removed from workspace",
+      message: `You were removed from "${workspaceDetails?.name || "a workspace"}".`,
+    });
 
     return res.status(200).json({
       message: "Member removed successfully",

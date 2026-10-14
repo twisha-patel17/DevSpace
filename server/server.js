@@ -14,6 +14,8 @@ const workspaceRoutes = require("./routes/workspace.routes");
 const executionRoutes = require("./routes/execution.routes");
 const notificationRoutes = require("./routes/notification.routes");
 
+const notificationService = require("./services/notification.service");
+
 const initializeSocket = require("./sockets/socket");
 
 const app = express();
@@ -21,6 +23,9 @@ const app = express();
 const server = http.createServer(app);
 
 const io = initializeSocket(server);
+
+notificationService.setSocketIO(io);
+
 app.set("io", io);
 
 app.use(
