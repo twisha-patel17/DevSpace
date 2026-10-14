@@ -99,16 +99,37 @@ const getLanguageFromFileName = (name) => {
   return languageMap[extension] || "plaintext";
 };
 
-const getFilePath = (name, parentId, files) => {
-  if (!parentId) return `/${name}`;
+const getFilePath = (name, parentValue, files) => {
+  // FileTree may pass either the folder ID or the full folder object.
+  const parentId =
+    parentValue && typeof parentValue === "object"
+      ? parentValue._id || parentValue.id || parentValue.fileId
+      : parentValue;
+
+  const cleanName = String(name || "").trim().replace(/^\/+|\/+$/g, "");
+
+  if (!cleanName) {
+    throw new Error("Enter a valid file or folder name.");
+  }
+
+  if (!parentId) return `/${cleanName}`;
 
   const parent = files.find(
     (file) => String(file._id) === String(parentId)
   );
 
-  if (!parent) return `/${name}`;
+  if (!parent) {
+    throw new Error(
+      "The selected parent folder could not be found. Refresh the workspace and try again."
+    );
+  }
 
-  return `${parent.path}/${name}`;
+  if (parent.type !== "folder") {
+    throw new Error("You can only create items inside a folder.");
+  }
+
+  const parentPath = String(parent.path || "").replace(/^\/+|\/+$/g, "");
+  return `/${[parentPath, cleanName].filter(Boolean).join("/")}`;
 };
 
 const getCollaboratorInitials = (username = "") => {
@@ -683,23 +704,57 @@ const WorkspacePage = () => {
         if (cancelled) return;
 
         if (!loadedFiles || loadedFiles.length === 0) {
-          const defaultName = getDefaultFileName(loadedWorkspace);
+          // A viewer must never trigger a write operation just by opening
+          // an empty workspace. Resolve the role from the freshly fetched
+          // workspace because React state updates are asynchronous.
+          const loadedOwnerId = getIdString(
+            loadedWorkspace?.owner || loadedWorkspace?.createdBy
+          );
 
-          const defaultFile = await createWorkspaceFile({
-            workspaceId,
-            fileData: {
-              name: defaultName,
-              path: `/${defaultName}`,
-              type: "file",
-              language: getLanguageFromFileName(defaultName),
-              content: "",
-              parent: null,
-            },
-          });
+          const loadedMember = (loadedWorkspace?.members || []).find(
+            (member) => {
+              const memberUserId = getIdString(
+                member?.user || member?.userId || member
+              );
 
-          if (cancelled) return;
+              return memberUserId && memberUserId === currentUserId;
+            }
+          );
 
-          loadedFiles = [defaultFile];
+          const loadedRole = String(
+            loadedWorkspace?.role ||
+              loadedWorkspace?.memberRole ||
+              loadedMember?.role ||
+              (loadedOwnerId && loadedOwnerId === currentUserId
+                ? "owner"
+                : "")
+          ).toLowerCase();
+
+          const canCreateDefaultFile =
+            loadedRole === "owner" || loadedRole === "editor";
+
+          if (canCreateDefaultFile) {
+            const defaultName = getDefaultFileName(loadedWorkspace);
+
+            const defaultFile = await createWorkspaceFile({
+              workspaceId,
+              fileData: {
+                name: defaultName,
+                path: `/${defaultName}`,
+                type: "file",
+                language: getLanguageFromFileName(defaultName),
+                content: "",
+                parent: null,
+              },
+            });
+
+            if (cancelled) return;
+
+            loadedFiles = [defaultFile];
+          } else {
+            // Leave the explorer empty for viewers; do not attempt to create.
+            loadedFiles = [];
+          }
         }
 
         if (cancelled) return;
@@ -827,18 +882,33 @@ const WorkspacePage = () => {
     try {
       const type = fileModal.mode;
 
-      const file = await createWorkspaceFile({
-        workspaceId,
-        fileData: {
-          name,
-          path: getFilePath(name, fileModal.parent, filesRef.current),
-          type,
-          parent: fileModal.parent || null,
-          language:
-            type === "file" ? getLanguageFromFileName(name) : null,
-          content: "",
-        },
-      });
+      if (type !== "file" && type !== "folder") {
+        throw new Error("Choose whether to create a file or folder.");
+      }
+
+      // FileTree can provide a folder object or an ID; the API must receive an ID.
+      const parentId =
+        fileModal.parent && typeof fileModal.parent === "object"
+          ? fileModal.parent._id ||
+            fileModal.parent.id ||
+            fileModal.parent.fileId ||
+            null
+          : fileModal.parent || null;
+
+      const fileData = {
+        name: name.replace(/^\/+|\/+$/g, ""),
+        path: getFilePath(name, parentId, filesRef.current),
+        type,
+        parent: parentId,
+      };
+
+      // Folder documents don't need editor language or source content.
+      if (type === "file") {
+        fileData.language = getLanguageFromFileName(name);
+        fileData.content = "";
+      }
+
+      const file = await createWorkspaceFile({ workspaceId, fileData });
 
       setFiles((current) => {
         if (current.some((item) => item._id === file._id)) {
@@ -882,15 +952,20 @@ const WorkspacePage = () => {
     try {
       const file = fileModal.file;
 
-      const parentPath = file.parent
+      const parentId =
+        file.parent && typeof file.parent === "object"
+          ? file.parent._id || file.parent.id || file.parent.fileId
+          : file.parent;
+
+      const parentPath = parentId
         ? filesRef.current.find(
-            (item) => item._id === file.parent
+            (item) => String(item._id) === String(parentId)
           )?.path || ""
         : "";
 
-      const newPath = parentPath
-        ? `${parentPath}/${name}`
-        : `/${name}`;
+      const cleanParentPath = String(parentPath).replace(/^\/+|\/+$/g, "");
+      const cleanName = name.replace(/^\/+|\/+$/g, "");
+      const newPath = `/${[cleanParentPath, cleanName].filter(Boolean).join("/")}`;
 
       await updateWorkspaceFile({
         workspaceId,
