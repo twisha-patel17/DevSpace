@@ -1471,6 +1471,7 @@ const WorkspacePage = () => {
                 onCreateFolder={openCreateFolderModal}
                 onRename={openRenameModal}
                 onDelete={handleDelete}
+                readOnly={isReadOnly}
               />
             )}
           </div>
