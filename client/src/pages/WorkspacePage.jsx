@@ -1,3 +1,4 @@
+
 /* eslint-disable react-hooks/refs */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -12,6 +13,8 @@ import {
   FileCode2,
   Plus,
   X,
+  UserPlus,
+  LoaderCircle,
 } from "lucide-react";
 import Editor from "@monaco-editor/react";
 
@@ -99,7 +102,9 @@ const getLanguageFromFileName = (name) => {
 const getFilePath = (name, parentId, files) => {
   if (!parentId) return `/${name}`;
 
-  const parent = files.find((file) => file._id === parentId);
+  const parent = files.find(
+    (file) => String(file._id) === String(parentId)
+  );
 
   if (!parent) return `/${name}`;
 
@@ -118,14 +123,50 @@ const getCollaboratorInitials = (username = "") => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
+const getIdString = (value) => {
+  if (value == null) return "";
+
+  if (typeof value === "object") {
+    return String(value._id || value.id || value.userId || "");
+  }
+
+  return String(value);
+};
+
 const WorkspacePage = () => {
   const navigate = useNavigate();
   const { workspaceId } = useParams();
-  const { accessToken } = useAuthStore();
+
+  const authState = useAuthStore();
+  const { accessToken } = authState;
+
+  const currentUser =
+    authState.user ||
+    authState.currentUser ||
+    authState.profile;
+
+  const currentUserId = getIdString(
+    currentUser?._id ||
+      currentUser?.id ||
+      currentUser?.userId ||
+      currentUser
+  );
 
   const [workspace, setWorkspace] = useState(null);
   const [collaborators, setCollaborators] = useState([]);
   const [showCollaborators, setShowCollaborators] = useState(false);
+
+  // Share and member management.
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareSearch, setShareSearch] = useState("");
+  const [shareRole, setShareRole] = useState("editor");
+  const [selectedShareUser, setSelectedShareUser] = useState(null);
+  const [shareResults, setShareResults] = useState([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
+  const [shareSuccess, setShareSuccess] = useState("");
+  const [memberActionLoading, setMemberActionLoading] = useState("");
 
   const [files, setFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
@@ -147,7 +188,6 @@ const WorkspacePage = () => {
   const codeRef = useRef(code);
   const isDirtyRef = useRef(isDirty);
 
-  // Keep refs synchronized with the latest state.
   filesRef.current = files;
   activeFileIdRef.current = activeFileId;
   codeRef.current = code;
@@ -175,6 +215,251 @@ const WorkspacePage = () => {
     if (activeFile?.name) return activeFile.name;
     return getDefaultFileName(workspace);
   }, [activeFile, workspace]);
+
+  // Resolve the current user's workspace role.
+  const ownerId = getIdString(
+    workspace?.owner || workspace?.createdBy
+  );
+
+  const currentMember = (workspace?.members || []).find((member) => {
+    const memberUserId = getIdString(
+      member.user || member.userId || member
+    );
+
+    return memberUserId && memberUserId === currentUserId;
+  });
+
+  const currentRole = String(
+    workspace?.role ||
+      workspace?.memberRole ||
+      currentMember?.role ||
+      (ownerId && currentUserId === ownerId ? "owner" : "")
+  ).toLowerCase();
+
+  const isWorkspaceOwner =
+    Boolean(currentUserId && ownerId && currentUserId === ownerId) ||
+    currentRole === "owner";
+
+  const isReadOnly = currentRole === "viewer";
+
+  // Load eligible users using the existing backend search endpoint.
+  useEffect(() => {
+    if (!showShareModal || !isWorkspaceOwner) return undefined;
+
+    const query = shareSearch.trim();
+
+    if (query.length < 2 || selectedShareUser) {
+      setShareResults([]);
+      setIsSearchingUsers(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setIsSearchingUsers(true);
+        setShareError("");
+
+        const response = await api.get(
+          `/workspaces/${workspaceId}/members/search`,
+          { params: { q: query } }
+        );
+
+        if (!cancelled) {
+          setShareResults(response.data?.users || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setShareResults([]);
+          setShareError(
+            err.response?.data?.message ||
+              "Unable to search for users. Please try again."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearchingUsers(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    showShareModal,
+    isWorkspaceOwner,
+    workspaceId,
+    shareSearch,
+    selectedShareUser,
+  ]);
+
+  const refreshWorkspaceDetails = async () => {
+    const response = await api.get(`/workspaces/${workspaceId}`);
+
+    if (response.data?.workspace) {
+      setWorkspace(response.data.workspace);
+    }
+  };
+
+  const openShareModal = () => {
+    setShareError("");
+    setShareSuccess("");
+    setShareSearch("");
+    setSelectedShareUser(null);
+    setShareResults([]);
+    setShareRole("editor");
+    setShowShareModal(true);
+  };
+
+  const closeShareModal = () => {
+    if (isSharing || memberActionLoading) return;
+
+    setShowShareModal(false);
+    setShareError("");
+    setShareSuccess("");
+    setShareSearch("");
+    setSelectedShareUser(null);
+    setShareResults([]);
+    setShareRole("editor");
+  };
+
+  // Add a selected user to the workspace.
+  const handleShareWorkspace = async (event) => {
+    event.preventDefault();
+
+    if (!isWorkspaceOwner) {
+      setShareError("Only the workspace owner can invite collaborators.");
+      return;
+    }
+
+    if (!selectedShareUser?.id) {
+      setShareError("Search for and select a user first.");
+      return;
+    }
+
+    if (selectedShareUser.id === currentUserId) {
+      setShareError("You cannot invite yourself.");
+      return;
+    }
+
+    if (!["editor", "viewer"].includes(shareRole)) {
+      setShareError("Choose a valid workspace role.");
+      return;
+    }
+
+    setIsSharing(true);
+    setShareError("");
+    setShareSuccess("");
+
+    try {
+      await api.post(`/workspaces/${workspaceId}/members`, {
+        userId: selectedShareUser.id,
+        role: shareRole,
+      });
+
+      const invitedUsername = selectedShareUser.username || "User";
+
+      setShareSuccess(
+        `${invitedUsername} was added as ${shareRole}.`
+      );
+
+      setSelectedShareUser(null);
+      setShareSearch("");
+      setShareResults([]);
+      setShareRole("editor");
+
+      try {
+        await refreshWorkspaceDetails();
+      } catch (refreshError) {
+        console.error(
+          "Member added, but workspace refresh failed:",
+          refreshError
+        );
+      }
+    } catch (err) {
+      console.error("Failed to share workspace:", err);
+
+      setShareError(
+        err.response?.data?.message ||
+          "Failed to add the collaborator. Please try again."
+      );
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  // Update an existing collaborator's role.
+  const handleMemberRoleChange = async (memberUserId, role) => {
+    if (!isWorkspaceOwner) return;
+    if (!memberUserId || !["editor", "viewer"].includes(role)) return;
+
+    setMemberActionLoading(memberUserId);
+    setShareError("");
+    setShareSuccess("");
+
+    try {
+      const response = await api.patch(
+        `/workspaces/${workspaceId}/members/${memberUserId}`,
+        { role }
+      );
+
+      if (response.data?.workspace) {
+        setWorkspace(response.data.workspace);
+      } else {
+        await refreshWorkspaceDetails();
+      }
+
+      setShareSuccess(`Member role updated to ${role}.`);
+    } catch (err) {
+      console.error("Failed to update member role:", err);
+
+      setShareError(
+        err.response?.data?.message ||
+          "Failed to update the member's role."
+      );
+    } finally {
+      setMemberActionLoading("");
+    }
+  };
+
+  // Remove a collaborator.
+  const handleRemoveMember = async (memberUserId, username) => {
+    if (!isWorkspaceOwner || !memberUserId) return;
+
+    const confirmed = window.confirm(
+      `Remove ${username || "this collaborator"} from this workspace?`
+    );
+
+    if (!confirmed) return;
+
+    setMemberActionLoading(memberUserId);
+    setShareError("");
+    setShareSuccess("");
+
+    try {
+      await api.delete(
+        `/workspaces/${workspaceId}/members/${memberUserId}`
+      );
+
+      await refreshWorkspaceDetails();
+
+      setShareSuccess(
+        `${username || "Collaborator"} was removed from the workspace.`
+      );
+    } catch (err) {
+      console.error("Failed to remove member:", err);
+
+      setShareError(
+        err.response?.data?.message ||
+          "Failed to remove the collaborator."
+      );
+    } finally {
+      setMemberActionLoading("");
+    }
+  };
 
   // Real-time workspace collaboration.
   useEffect(() => {
@@ -212,7 +497,9 @@ const WorkspacePage = () => {
 
         if (exists) {
           return current.map((item) =>
-            item.userId === user.userId ? { ...item, ...user } : item
+            item.userId === user.userId
+              ? { ...item, ...user }
+              : item
           );
         }
 
@@ -266,10 +553,7 @@ const WorkspacePage = () => {
       socket.off("workspace:joined", handleWorkspaceJoined);
       socket.off("workspace:user-joined", handleUserJoined);
       socket.off("workspace:user-left", handleUserLeft);
-      socket.off(
-        "workspace:user-file-changed",
-        handleUserFileChanged
-      );
+      socket.off("workspace:user-file-changed", handleUserFileChanged);
     };
   }, [workspaceId, accessToken]);
 
@@ -321,11 +605,8 @@ const WorkspacePage = () => {
               file._id === currentActiveId && file.type === "file"
           );
 
-          if (activeStillExists) {
-            continue;
-          }
+          if (activeStillExists) continue;
 
-          // The selected file was deleted by another collaborator.
           const nextFile =
             updatedFiles.find((file) => file.type === "file") || null;
 
@@ -350,10 +631,7 @@ const WorkspacePage = () => {
     };
 
     const handleWorkspaceFilesChanged = (event = {}) => {
-      if (String(event.workspaceId) !== String(workspaceId)) {
-        return;
-      }
-
+      if (String(event.workspaceId) !== String(workspaceId)) return;
       refreshWorkspaceFiles();
     };
 
@@ -363,18 +641,12 @@ const WorkspacePage = () => {
     };
 
     socket.on("file:changed", handleRemoteFileChange);
-    socket.on(
-      "workspace:files-changed",
-      handleWorkspaceFilesChanged
-    );
+    socket.on("workspace:files-changed", handleWorkspaceFilesChanged);
     socket.on("file:error", handleFileError);
 
     return () => {
       socket.off("file:changed", handleRemoteFileChange);
-      socket.off(
-        "workspace:files-changed",
-        handleWorkspaceFilesChanged
-      );
+      socket.off("workspace:files-changed", handleWorkspaceFilesChanged);
       socket.off("file:error", handleFileError);
     };
   }, [workspaceId]);
@@ -391,7 +663,6 @@ const WorkspacePage = () => {
         setFilesLoading(true);
         setError("");
 
-        // FIX: api.js already includes /api in its baseURL.
         const workspaceResponse = await api.get(
           `/workspaces/${workspaceId}`
         );
@@ -402,7 +673,6 @@ const WorkspacePage = () => {
         setWorkspace(loadedWorkspace);
 
         try {
-          // FIX: Do not add another /api prefix.
           await api.patch(`/workspaces/${workspaceId}/opened`);
         } catch {
           // Opening the workspace should not block the editor.
@@ -503,6 +773,8 @@ const WorkspacePage = () => {
   };
 
   const openCreateFileModal = (parent = null) => {
+    if (isReadOnly) return;
+
     setFileModal({
       open: true,
       mode: "file",
@@ -513,6 +785,8 @@ const WorkspacePage = () => {
   };
 
   const openCreateFolderModal = (parent = null) => {
+    if (isReadOnly) return;
+
     setFileModal({
       open: true,
       mode: "folder",
@@ -523,6 +797,8 @@ const WorkspacePage = () => {
   };
 
   const openRenameModal = (file) => {
+    if (isReadOnly) return;
+
     setFileModal({
       open: true,
       mode: "rename",
@@ -543,8 +819,9 @@ const WorkspacePage = () => {
   };
 
   const handleCreateFile = async () => {
-    const name = fileModal.value.trim();
+    if (isReadOnly) return;
 
+    const name = fileModal.value.trim();
     if (!name) return;
 
     try {
@@ -597,8 +874,9 @@ const WorkspacePage = () => {
   };
 
   const handleRename = async () => {
-    const name = fileModal.value.trim();
+    if (isReadOnly) return;
 
+    const name = fileModal.value.trim();
     if (!name || !fileModal.file) return;
 
     try {
@@ -637,6 +915,8 @@ const WorkspacePage = () => {
   };
 
   const handleDelete = async (file) => {
+    if (isReadOnly) return;
+
     const message =
       file.type === "folder"
         ? `Delete folder "${file.name}" and everything inside it?`
@@ -687,6 +967,8 @@ const WorkspacePage = () => {
   };
 
   const handleEditorChange = (value) => {
+    if (isReadOnly) return;
+
     const newContent = value ?? "";
 
     if (isRemoteUpdate.current) {
@@ -701,9 +983,7 @@ const WorkspacePage = () => {
 
     const currentFileId = activeFileIdRef.current;
 
-    if (!socket.connected || !workspaceId || !currentFileId) {
-      return;
-    }
+    if (!socket.connected || !workspaceId || !currentFileId) return;
 
     socket.emit("file:change", {
       workspaceId,
@@ -713,6 +993,11 @@ const WorkspacePage = () => {
   };
 
   const handleSave = async () => {
+    if (isReadOnly) {
+      setOutput("Viewers cannot save changes.");
+      return;
+    }
+
     const currentFileId = activeFileIdRef.current;
 
     const currentFile = filesRef.current.find(
@@ -789,7 +1074,6 @@ const WorkspacePage = () => {
       setIsRunning(true);
       setOutput(`Running ${currentFile.name}...\n`);
 
-      // FIX: The Axios baseURL already includes /api.
       const response = await api.post("/execution/run", {
         language: executionLanguage,
         code: codeRef.current,
@@ -800,15 +1084,11 @@ const WorkspacePage = () => {
       const outputParts = [];
 
       if (result.compileError) {
-        outputParts.push(
-          `COMPILE ERROR\n\n${result.compileError}`
-        );
+        outputParts.push(`COMPILE ERROR\n\n${result.compileError}`);
       }
 
       if (result.compileOutput) {
-        outputParts.push(
-          `COMPILE OUTPUT\n\n${result.compileOutput}`
-        );
+        outputParts.push(`COMPILE OUTPUT\n\n${result.compileOutput}`);
       }
 
       if (result.stdout) {
@@ -829,19 +1109,12 @@ const WorkspacePage = () => {
         outputParts.push(result.output);
       }
 
-      if (
-        result.exitCode !== null &&
-        result.exitCode !== undefined
-      ) {
-        outputParts.push(
-          `\nProcess exited with code ${result.exitCode}`
-        );
+      if (result.exitCode !== null && result.exitCode !== undefined) {
+        outputParts.push(`\nProcess exited with code ${result.exitCode}`);
       }
 
       if (result.signal) {
-        outputParts.push(
-          `\nProcess terminated by signal: ${result.signal}`
-        );
+        outputParts.push(`\nProcess terminated by signal: ${result.signal}`);
       }
 
       setOutput(
@@ -860,7 +1133,7 @@ const WorkspacePage = () => {
     }
   };
 
-  // Keyboard shortcuts: Ctrl/Cmd + S to save, Ctrl/Cmd + Enter to run.
+  // Keyboard shortcuts.
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (
@@ -889,7 +1162,7 @@ const WorkspacePage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0b0d0f] text-white flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0d0f] text-white">
         <div className="text-sm text-zinc-400">
           Loading workspace...
         </div>
@@ -899,15 +1172,15 @@ const WorkspacePage = () => {
 
   if (error || !workspace) {
     return (
-      <div className="min-h-screen bg-[#0b0d0f] text-white flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0d0f] text-white">
         <div className="text-center">
-          <p className="text-red-400 mb-4">
+          <p className="mb-4 text-red-400">
             {error || "Workspace not found."}
           </p>
 
           <button
             onClick={() => navigate("/workspaces")}
-            className="px-4 py-2 rounded-lg bg-[#dc9458] text-black font-medium hover:bg-[#e5a46c] transition"
+            className="rounded-lg bg-[#dc9458] px-4 py-2 font-medium text-black transition hover:bg-[#e5a46c]"
           >
             Back to Workspaces
           </button>
@@ -916,13 +1189,26 @@ const WorkspacePage = () => {
     );
   }
 
+  const workspaceMembers = (workspace.members || []).filter((member) => {
+    const memberUser = member.user || member;
+    const memberId = getIdString(
+      memberUser?._id ||
+        memberUser?.id ||
+        member.userId ||
+        memberUser
+    );
+
+    return memberId && memberId !== ownerId;
+  });
+
   return (
-    <div className="h-screen w-full overflow-hidden bg-[#0b0d0f] text-white flex flex-col">
-      <header className="h-14 shrink-0 border-b border-white/10 bg-[#101214] flex items-center justify-between px-4">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#0b0d0f] text-white">
+      {/* Workspace header */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-[#101214] px-4">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={() => navigate("/workspaces")}
-            className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/5 hover:text-white"
             title="Back to workspaces"
           >
             <ArrowLeft size={18} />
@@ -931,43 +1217,49 @@ const WorkspacePage = () => {
           <div className="h-5 w-px bg-white/10" />
 
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold truncate">
+            <h1 className="truncate text-sm font-semibold">
               {workspace.name}
             </h1>
-
             <p className="text-[11px] text-zinc-500">
               {editorLanguage}
+              {isReadOnly ? " · Read-only access" : ""}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center mr-2">
+          <div className="mr-2 hidden items-center sm:flex">
             {isSaving ? (
-              <span className="text-xs text-zinc-500">
-                Saving...
-              </span>
+              <span className="text-xs text-zinc-500">Saving...</span>
             ) : isDirty ? (
               <span className="text-xs text-amber-400">
                 Unsaved changes
               </span>
             ) : (
-              <span className="text-xs text-emerald-400">
-                Saved
-              </span>
+              <span className="text-xs text-emerald-400">Saved</span>
             )}
           </div>
 
-          {/* Collaborators */}
+          {isWorkspaceOwner && (
+            <button
+              type="button"
+              onClick={openShareModal}
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#dc9458] px-3 text-black transition hover:bg-[#e5a46c]"
+              title="Share workspace"
+            >
+              <UserPlus size={15} />
+              <span className="text-xs font-semibold">Share</span>
+            </button>
+          )}
+
+          {/* Online collaborators */}
           <div className="relative">
             <button
-              onClick={() =>
-                setShowCollaborators((current) => !current)
-              }
-              className={`h-9 px-3 rounded-lg flex items-center gap-2 border transition ${
+              onClick={() => setShowCollaborators((current) => !current)}
+              className={`flex h-9 items-center gap-2 rounded-lg border px-3 transition ${
                 showCollaborators
-                  ? "bg-[#dc9458]/10 border-[#dc9458]/30 text-[#dc9458]"
-                  : "border-white/10 text-zinc-400 hover:text-white hover:bg-white/5"
+                  ? "border-[#dc9458]/30 bg-[#dc9458]/10 text-[#dc9458]"
+                  : "border-white/10 text-zinc-400 hover:bg-white/5 hover:text-white"
               }`}
               title="Collaborators"
             >
@@ -979,7 +1271,7 @@ const WorkspacePage = () => {
 
             {showCollaborators && (
               <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#111416] shadow-2xl shadow-black/50">
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Users size={16} className="text-[#dc9458]" />
                     <div>
@@ -988,7 +1280,7 @@ const WorkspacePage = () => {
                       </p>
                       <p className="text-[11px] text-zinc-500">
                         {collaborators.length === 0
-                          ? "Just you"
+                          ? "No other collaborators online"
                           : `${collaborators.length} online`}
                       </p>
                     </div>
@@ -996,7 +1288,8 @@ const WorkspacePage = () => {
 
                   <button
                     onClick={() => setShowCollaborators(false)}
-                    className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-white"
+                    aria-label="Close collaborators"
                   >
                     <X size={15} />
                   </button>
@@ -1004,70 +1297,77 @@ const WorkspacePage = () => {
 
                 {collaborators.length === 0 ? (
                   <div className="px-5 py-8 text-center">
-                    <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-white/5 flex items-center justify-center">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/5">
                       <Users size={18} className="text-zinc-500" />
                     </div>
                     <p className="text-sm text-zinc-300">
                       You’re working alone
                     </p>
                     <p className="mt-1 text-xs leading-5 text-zinc-500">
-                      Invite someone to this workspace to collaborate in real time.
+                      Share this workspace to collaborate in real time.
                     </p>
+
+                    {isWorkspaceOwner && (
+                      <button
+                        onClick={() => {
+                          setShowCollaborators(false);
+                          openShareModal();
+                        }}
+                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#dc9458] px-3 py-2 text-xs font-semibold text-black transition hover:bg-[#e5a46c]"
+                      >
+                        <UserPlus size={13} />
+                        Share workspace
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="max-h-80 overflow-y-auto">
                     {collaborators.map((collaborator) => {
-                      const collaboratorFile =
-                        collaborator.activeFileId
-                          ? files.find(
-                              (file) =>
-                                file._id === collaborator.activeFileId
-                            )
-                          : null;
+                      const collaboratorFile = collaborator.activeFileId
+                        ? files.find(
+                            (file) =>
+                              file._id === collaborator.activeFileId
+                          )
+                        : null;
 
                       return (
                         <div
                           key={collaborator.userId}
-                          className="px-4 py-3 border-b border-white/5 last:border-b-0 hover:bg-white/[0.025] transition"
+                          className="flex items-center gap-3 border-b border-white/5 px-4 py-3 transition last:border-b-0 hover:bg-white/[0.025]"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="relative shrink-0">
-                              {collaborator.avatar ? (
-                                <img
-                                  src={collaborator.avatar}
-                                  alt={collaborator.username}
-                                  className="h-9 w-9 rounded-full object-cover border border-white/10"
-                                />
-                              ) : (
-                                <div className="h-9 w-9 rounded-full bg-[#dc9458]/15 border border-[#dc9458]/20 flex items-center justify-center text-xs font-semibold text-[#dc9458]">
-                                  {getCollaboratorInitials(
-                                    collaborator.username
-                                  )}
-                                </div>
-                              )}
-
-                              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-[#111416]" />
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <p className="text-sm text-zinc-200 truncate">
-                                  {collaborator.username}
-                                </p>
-
-                                {collaborator.role && (
-                                  <span className="shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500">
-                                    {collaborator.role}
-                                  </span>
+                          <div className="relative shrink-0">
+                            {collaborator.avatar ? (
+                              <img
+                                src={collaborator.avatar}
+                                alt={collaborator.username || "User"}
+                                className="h-9 w-9 rounded-full border border-white/10 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#dc9458]/20 bg-[#dc9458]/15 text-xs font-semibold text-[#dc9458]">
+                                {getCollaboratorInitials(
+                                  collaborator.username
                                 )}
                               </div>
+                            )}
+                            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#111416] bg-emerald-400" />
+                          </div>
 
-                              <p className="mt-0.5 text-[11px] text-zinc-500 truncate">
-                                {collaboratorFile
-                                  ? `Editing ${collaboratorFile.name}`
-                                  : "Online"}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <p className="truncate text-sm text-zinc-200">
+                                {collaborator.username}
                               </p>
+                              {collaborator.role && (
+                                <span className="shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500">
+                                  {collaborator.role}
+                                </span>
+                              )}
                             </div>
+                            <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                              {collaboratorFile
+                                ? `Editing ${collaboratorFile.name}`
+                                : "Online"}
+                            </p>
                           </div>
                         </div>
                       );
@@ -1075,45 +1375,40 @@ const WorkspacePage = () => {
                   </div>
                 )}
 
-                <div className="px-4 py-2.5 bg-white/[0.02] border-t border-white/10">
+                <div className="border-t border-white/10 bg-white/[0.02] px-4 py-2.5">
                   <div className="flex items-center gap-2 text-[10px] text-zinc-500">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                    Real-time collaboration is active
+                    Real-time collaboration
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Save */}
           <button
             onClick={handleSave}
             disabled={
+              isReadOnly ||
               !activeFile ||
               activeFile.type !== "file" ||
               !isDirty ||
               isSaving
             }
-            className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition"
+            className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Save size={15} />
-            <span className="hidden sm:inline text-xs font-medium">
+            <span className="hidden text-xs font-medium sm:inline">
               Save
             </span>
           </button>
 
-          {/* Run */}
           <button
             onClick={handleRun}
-            disabled={
-              !activeFile ||
-              activeFile.type !== "file" ||
-              isRunning
-            }
-            className="h-9 px-3 rounded-lg bg-[#dc9458] text-black hover:bg-[#e5a46c] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition"
+            disabled={!activeFile || activeFile.type !== "file" || isRunning}
+            className="flex h-9 items-center gap-2 rounded-lg bg-[#dc9458] px-3 text-black transition hover:bg-[#e5a46c] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Play size={15} fill="currentColor" />
-            <span className="hidden sm:inline text-xs font-semibold">
+            <span className="hidden text-xs font-semibold sm:inline">
               {isRunning ? "Running..." : "Run"}
             </span>
           </button>
@@ -1122,7 +1417,7 @@ const WorkspacePage = () => {
             onClick={() =>
               navigate(`/workspaces/${workspaceId}/settings`)
             }
-            className="h-9 w-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/5 hover:text-white"
             title="Workspace settings"
           >
             <Settings size={17} />
@@ -1130,10 +1425,10 @@ const WorkspacePage = () => {
         </div>
       </header>
 
-      <div className="flex flex-1 min-h-0">
-        {/* File Explorer */}
-        <aside className="w-64 shrink-0 border-r border-white/10 bg-[#0f1113] flex flex-col">
-          <div className="h-11 px-3 border-b border-white/10 flex items-center justify-between">
+      <div className="flex min-h-0 flex-1">
+        {/* File explorer */}
+        <aside className="flex w-64 shrink-0 flex-col border-r border-white/10 bg-[#0f1113]">
+          <div className="flex h-11 items-center justify-between border-b border-white/10 px-3">
             <div className="flex items-center gap-2">
               <Folder size={15} className="text-[#dc9458]" />
               <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -1141,26 +1436,28 @@ const WorkspacePage = () => {
               </span>
             </div>
 
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => openCreateFileModal()}
-                className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
-                title="New file"
-              >
-                <FileCode2 size={15} />
-              </button>
+            {!isReadOnly && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => openCreateFileModal()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-white"
+                  title="New file"
+                >
+                  <FileCode2 size={15} />
+                </button>
 
-              <button
-                onClick={() => openCreateFolderModal()}
-                className="h-7 w-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
-                title="New folder"
-              >
-                <Plus size={16} />
-              </button>
-            </div>
+                <button
+                  onClick={() => openCreateFolderModal()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-white"
+                  title="New folder"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {filesLoading ? (
               <div className="px-3 py-4 text-xs text-zinc-500">
                 Loading files...
@@ -1179,22 +1476,21 @@ const WorkspacePage = () => {
           </div>
         </aside>
 
-        {/* Editor Area */}
-        <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#0b0d0f]">
-          <div className="h-10 shrink-0 border-b border-white/10 bg-[#0f1113] flex items-center">
+        {/* Editor */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0d0f]">
+          <div className="flex h-10 shrink-0 items-center border-b border-white/10 bg-[#0f1113]">
             {activeFile ? (
-              <div className="h-full px-4 border-r border-white/10 flex items-center gap-2 min-w-0">
+              <div className="flex h-full min-w-0 items-center gap-2 border-r border-white/10 px-4">
                 <FileCode2
                   size={14}
-                  className="text-[#dc9458] shrink-0"
+                  className="shrink-0 text-[#dc9458]"
                 />
-                <span className="text-xs text-zinc-300 truncate">
+                <span className="truncate text-xs text-zinc-300">
                   {fileName}
                 </span>
-
                 {isDirty && (
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-[#dc9458] shrink-0"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#dc9458]"
                     title="Unsaved changes"
                   />
                 )}
@@ -1206,7 +1502,7 @@ const WorkspacePage = () => {
             )}
           </div>
 
-          <div className="flex-1 min-h-0">
+          <div className="min-h-0 flex-1">
             {activeFile ? (
               <Editor
                 height="100%"
@@ -1226,10 +1522,11 @@ const WorkspacePage = () => {
                   renderWhitespace: "selection",
                   tabSize: 2,
                   wordWrap: "on",
+                  readOnly: isReadOnly,
                 }}
               />
             ) : (
-              <div className="h-full flex items-center justify-center">
+              <div className="flex h-full items-center justify-center">
                 <div className="text-center">
                   <FileCode2
                     size={30}
@@ -1243,14 +1540,11 @@ const WorkspacePage = () => {
             )}
           </div>
 
-          {/* Output */}
-          <div className="h-36 shrink-0 border-t border-white/10 bg-[#0e1012] flex flex-col">
-            <div className="h-9 shrink-0 px-3 border-b border-white/10 flex items-center justify-between">
+          {/* Output panel */}
+          <div className="flex h-36 shrink-0 flex-col border-t border-white/10 bg-[#0e1012]">
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
               <div className="flex items-center gap-2">
-                <Terminal
-                  size={14}
-                  className="text-[#dc9458]"
-                />
+                <Terminal size={14} className="text-[#dc9458]" />
                 <span className="text-xs font-medium text-zinc-400">
                   Output
                 </span>
@@ -1259,21 +1553,21 @@ const WorkspacePage = () => {
               {output && (
                 <button
                   onClick={() => setOutput("")}
-                  className="text-[11px] text-zinc-600 hover:text-zinc-300 transition"
+                  className="text-[11px] text-zinc-600 transition hover:text-zinc-300"
                 >
                   Clear
                 </button>
               )}
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
+            <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
               {isRunning ? (
                 <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <span className="h-2 w-2 rounded-full bg-[#dc9458] animate-pulse" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#dc9458]" />
                   Running code...
                 </div>
               ) : output ? (
-                <pre className="font-mono text-xs leading-5 text-zinc-300 whitespace-pre-wrap break-words">
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-300">
                   {output}
                 </pre>
               ) : (
@@ -1286,11 +1580,405 @@ const WorkspacePage = () => {
         </main>
       </div>
 
-      {/* File Modal */}
+      {/* Share workspace modal */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeShareModal();
+            }
+          }}
+        >
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111416] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dc9458]/10 text-[#dc9458]">
+                  <UserPlus size={19} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    Share workspace
+                  </h2>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Find people and collaborate on code.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeShareModal}
+                disabled={Boolean(isSharing || memberActionLoading)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                aria-label="Close share dialog"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto">
+              <form onSubmit={handleShareWorkspace} className="p-5">
+                <label
+                  htmlFor="share-search"
+                  className="mb-2 block text-xs font-medium text-zinc-300"
+                >
+                  Search by username or email
+                </label>
+
+                <input
+                  id="share-search"
+                  type="text"
+                  value={shareSearch}
+                  onChange={(event) => {
+                    setShareSearch(event.target.value);
+                    setSelectedShareUser(null);
+                    setShareResults([]);
+                    setShareError("");
+                    setShareSuccess("");
+                  }}
+                  placeholder="Start typing a username or email..."
+                  disabled={isSharing}
+                  autoFocus
+                  autoComplete="off"
+                  className="h-10 w-full rounded-lg border border-white/10 bg-[#0b0d0f] px-3 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-[#dc9458]/50 disabled:opacity-50"
+                />
+
+                {!selectedShareUser && shareSearch.trim().length < 2 && (
+                  <p className="mt-2 text-[10px] text-zinc-600">
+                    Enter at least 2 characters to search registered users.
+                  </p>
+                )}
+
+                {isSearchingUsers && (
+                  <div className="flex items-center gap-2 py-4 text-xs text-zinc-500">
+                    <LoaderCircle size={14} className="animate-spin" />
+                    Searching users...
+                  </div>
+                )}
+
+                {!isSearchingUsers &&
+                  !selectedShareUser &&
+                  shareSearch.trim().length >= 2 &&
+                  shareResults.length === 0 &&
+                  !shareError && (
+                    <p className="py-4 text-xs text-zinc-500">
+                      No available users found. Try another username or email.
+                    </p>
+                  )}
+
+                {!selectedShareUser && shareResults.length > 0 && (
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-white/10">
+                    {shareResults.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedShareUser(user);
+                          setShareSearch("");
+                          setShareResults([]);
+                          setShareError("");
+                        }}
+                        className="flex w-full items-center gap-3 border-b border-white/5 px-3 py-3 text-left transition last:border-b-0 hover:bg-white/[0.04]"
+                      >
+                        {user.avatar ? (
+                          <img
+                            src={user.avatar}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dc9458]/15 text-xs font-semibold text-[#dc9458]">
+                            {getCollaboratorInitials(user.username)}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-zinc-200">
+                            {user.username}
+                          </p>
+                          <p className="mt-1 truncate text-[10px] text-zinc-500">
+                            {user.email}
+                          </p>
+                        </div>
+
+                        <UserPlus
+                          size={15}
+                          className="shrink-0 text-[#dc9458]"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedShareUser && (
+                  <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#dc9458]/25 bg-[#dc9458]/[0.06] p-3">
+                    {selectedShareUser.avatar ? (
+                      <img
+                        src={selectedShareUser.avatar}
+                        alt=""
+                        className="h-9 w-9 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#dc9458]/15 text-xs font-semibold text-[#dc9458]">
+                        {getCollaboratorInitials(
+                          selectedShareUser.username
+                        )}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-white">
+                        {selectedShareUser.username}
+                      </p>
+                      <p className="truncate text-[10px] text-zinc-500">
+                        {selectedShareUser.email}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedShareUser(null)}
+                      disabled={isSharing}
+                      className="rounded-md p-1 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+                      aria-label="Choose a different user"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
+
+                <label
+                  htmlFor="share-role"
+                  className="mb-2 mt-5 block text-xs font-medium text-zinc-300"
+                >
+                  Access level
+                </label>
+
+                <select
+                  id="share-role"
+                  value={shareRole}
+                  onChange={(event) => setShareRole(event.target.value)}
+                  disabled={isSharing}
+                  className="h-10 w-full rounded-lg border border-white/10 bg-[#0b0d0f] px-3 text-xs text-zinc-200 outline-none focus:border-[#dc9458]/50 disabled:opacity-50"
+                >
+                  <option value="editor">Editor — can modify files</option>
+                  <option value="viewer">Viewer — read-only access</option>
+                </select>
+
+                <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                  <div className="flex items-start gap-2">
+                    <Users
+                      size={14}
+                      className="mt-0.5 shrink-0 text-[#dc9458]"
+                    />
+                    <p className="text-[10px] leading-4 text-zinc-500">
+                      {shareRole === "editor"
+                        ? "Editors can modify workspace files, subject to backend permissions."
+                        : "Viewers should have read-only access. The backend must reject write operations."}
+                    </p>
+                  </div>
+                </div>
+
+                {shareError && (
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2.5 text-xs text-red-400"
+                  >
+                    {shareError}
+                  </div>
+                )}
+
+                {shareSuccess && (
+                  <div
+                    role="status"
+                    className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5 text-xs text-emerald-400"
+                  >
+                    {shareSuccess}
+                  </div>
+                )}
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeShareModal}
+                    disabled={Boolean(isSharing || memberActionLoading)}
+                    className="h-9 rounded-lg border border-white/10 px-4 text-xs text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                  >
+                    Close
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSharing || !selectedShareUser}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#dc9458] px-4 text-xs font-semibold text-black transition hover:bg-[#e5a46c] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSharing ? (
+                      <>
+                        <LoaderCircle
+                          size={14}
+                          className="animate-spin"
+                        />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus size={14} />
+                        Add collaborator
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Existing workspace members */}
+              <div className="border-t border-white/10 px-5 py-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    Workspace members
+                  </p>
+                  <span className="text-[10px] text-zinc-600">
+                    {workspaceMembers.length + (ownerId ? 1 : 0)} members
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    {workspace.owner?.avatar ? (
+                      <img
+                        src={workspace.owner.avatar}
+                        alt=""
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#dc9458]/15 text-[10px] font-semibold text-[#dc9458]">
+                        {getCollaboratorInitials(
+                          workspace.owner?.username ||
+                            workspace.owner?.name ||
+                            (ownerId === currentUserId
+                              ? currentUser?.username
+                              : "Owner") ||
+                            "Owner"
+                        )}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs text-zinc-200">
+                        {workspace.owner?.username ||
+                          workspace.owner?.name ||
+                          (ownerId === currentUserId
+                            ? currentUser?.username || "You"
+                            : "Workspace owner")}
+                      </p>
+                      <p className="text-[10px] text-zinc-500">Owner</p>
+                    </div>
+
+                    <span className="rounded-md border border-[#dc9458]/20 bg-[#dc9458]/[0.06] px-2 py-1 text-[9px] text-[#dc9458]">
+                      Owner
+                    </span>
+                  </div>
+
+                  {workspaceMembers.map((member, index) => {
+                    const memberUser = member.user || member;
+                    const memberId = getIdString(
+                      memberUser?._id ||
+                        memberUser?.id ||
+                        member.userId ||
+                        memberUser
+                    );
+
+                    const username =
+                      memberUser?.username ||
+                      memberUser?.name ||
+                      memberUser?.email ||
+                      "Workspace member";
+
+                    const actionLoading =
+                      memberActionLoading === memberId;
+
+                    return (
+                      <div
+                        key={memberId || index}
+                        className="flex items-center gap-3"
+                      >
+                        {memberUser?.avatar ? (
+                          <img
+                            src={memberUser.avatar}
+                            alt=""
+                            className="h-8 w-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-[10px] font-semibold text-zinc-300">
+                            {getCollaboratorInitials(username)}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-zinc-200">
+                            {username}
+                          </p>
+                          <p className="truncate text-[10px] text-zinc-500">
+                            {memberUser?.email || ""}
+                          </p>
+                        </div>
+
+                        <select
+                          aria-label={`Role for ${username}`}
+                          value={member.role || "viewer"}
+                          disabled={Boolean(memberActionLoading)}
+                          onChange={(event) =>
+                            handleMemberRoleChange(
+                              memberId,
+                              event.target.value
+                            )
+                          }
+                          className="max-w-[100px] rounded-md border border-white/10 bg-[#0b0d0f] px-2 py-1.5 text-[10px] capitalize text-zinc-300 outline-none focus:border-[#dc9458]/50 disabled:opacity-50"
+                        >
+                          <option value="editor">Editor</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          title={`Remove ${username}`}
+                          aria-label={`Remove ${username}`}
+                          disabled={Boolean(memberActionLoading)}
+                          onClick={() =>
+                            handleRemoveMember(memberId, username)
+                          }
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                        >
+                          {actionLoading ? (
+                            <LoaderCircle
+                              size={13}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <X size={14} />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {workspaceMembers.length === 0 && (
+                    <p className="py-2 text-xs text-zinc-600">
+                      No collaborators have been added yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / rename file or folder modal */}
       {fileModal.open && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#111416] shadow-2xl">
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-white">
                   {fileModal.mode === "rename"
@@ -1299,7 +1987,6 @@ const WorkspacePage = () => {
                     ? "New Folder"
                     : "New File"}
                 </h2>
-
                 <p className="mt-1 text-[11px] text-zinc-500">
                   {fileModal.mode === "rename"
                     ? "Choose a new name."
@@ -1309,7 +1996,8 @@ const WorkspacePage = () => {
 
               <button
                 onClick={closeFileModal}
-                className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-white"
+                aria-label="Close file dialog"
               >
                 <X size={16} />
               </button>
@@ -1339,17 +2027,15 @@ const WorkspacePage = () => {
                   }
                 }}
                 placeholder={
-                  fileModal.mode === "folder"
-                    ? "components"
-                    : "App.js"
+                  fileModal.mode === "folder" ? "components" : "App.js"
                 }
-                className="w-full h-10 rounded-lg border border-white/10 bg-[#0b0d0f] px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#dc9458]/50"
+                className="h-10 w-full rounded-lg border border-white/10 bg-[#0b0d0f] px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#dc9458]/50"
               />
 
               <div className="mt-5 flex justify-end gap-2">
                 <button
                   onClick={closeFileModal}
-                  className="h-9 px-4 rounded-lg border border-white/10 text-xs text-zinc-400 hover:text-white hover:bg-white/5 transition"
+                  className="h-9 rounded-lg border border-white/10 px-4 text-xs text-zinc-400 transition hover:bg-white/5 hover:text-white"
                 >
                   Cancel
                 </button>
@@ -1360,7 +2046,7 @@ const WorkspacePage = () => {
                       ? handleRename
                       : handleCreateFile
                   }
-                  className="h-9 px-4 rounded-lg bg-[#dc9458] text-black text-xs font-semibold hover:bg-[#e5a46c] transition"
+                  className="h-9 rounded-lg bg-[#dc9458] px-4 text-xs font-semibold text-black transition hover:bg-[#e5a46c]"
                 >
                   {fileModal.mode === "rename" ? "Rename" : "Create"}
                 </button>

@@ -14,7 +14,7 @@ History,
 ArrowUpRight,
 CircleDashed,
 CalendarDays,
-X,
+X
 } from "lucide-react";
 
 const FILTERS = [

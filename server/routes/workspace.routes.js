@@ -1,3 +1,4 @@
+
 const express = require("express");
 
 const {
@@ -9,16 +10,18 @@ const {
   getWorkspaceController,
   updateWorkspaceController,
   deleteWorkspaceController,
-
   getWorkspaceFilesController,
   createWorkspaceFileController,
   updateWorkspaceFileController,
   deleteWorkspaceFileController,
-
   addWorkspaceMemberController,
   updateWorkspaceMemberRoleController,
   removeWorkspaceMemberController,
 } = require("../controllers/workspace.controller");
+
+const {
+  searchWorkspaceMembers,
+} = require("../controllers/workspaceMemberSearch.controller");
 
 const authMiddleware = require("../middleware/authMiddleware");
 
@@ -26,35 +29,17 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-router.post(
-  "/",
-  createWorkspaceController
-);
+router.post("/", createWorkspaceController);
 
-router.get(
-  "/",
-  getWorkspacesController
-);
+router.get("/", getWorkspacesController);
 
-router.get(
-  "/recent",
-  getRecentWorkspacesController
-);
+router.get("/recent", getRecentWorkspacesController);
 
-router.get(
-  "/shared",
-  getSharedWorkspacesController
-);
+router.get("/shared", getSharedWorkspacesController);
 
-router.get(
-  "/:workspaceId/files",
-  getWorkspaceFilesController
-);
+router.get("/:workspaceId/files", getWorkspaceFilesController);
 
-router.post(
-  "/:workspaceId/files",
-  createWorkspaceFileController
-);
+router.post("/:workspaceId/files", createWorkspaceFileController);
 
 router.patch(
   "/:workspaceId/files/:fileId",
@@ -66,30 +51,20 @@ router.delete(
   deleteWorkspaceFileController
 );
 
-router.patch(
-  "/:workspaceId/opened",
-  markWorkspaceOpenedController
-);
+router.patch("/:workspaceId/opened", markWorkspaceOpenedController);
 
 router.get(
-  "/:workspaceId",
-  getWorkspaceController
+  "/:workspaceId/members/search",
+  searchWorkspaceMembers
 );
 
-router.patch(
-  "/:workspaceId",
-  updateWorkspaceController
-);
+router.get("/:workspaceId", getWorkspaceController);
 
-router.delete(
-  "/:workspaceId",
-  deleteWorkspaceController
-);
+router.patch("/:workspaceId", updateWorkspaceController);
 
-router.post(
-  "/:workspaceId/members",
-  addWorkspaceMemberController
-);
+router.delete("/:workspaceId", deleteWorkspaceController);
+
+router.post("/:workspaceId/members", addWorkspaceMemberController);
 
 router.patch(
   "/:workspaceId/members/:memberUserId",

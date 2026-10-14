@@ -3,10 +3,29 @@ const mongoose = require("mongoose");
 
 const notificationService = require("../services/notification.service");
 
+const getAuthenticatedUserId = (req) => {
+  const userId = req.user?.id || req.user?._id;
+
+  if (!userId || !mongoose.isValidObjectId(userId)) {
+    return null;
+  }
+
+  return userId;
+};
+
 const getNotifications = async (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
     const result = await notificationService.getNotifications({
-      userId: req.user.id,
+      userId,
       page: req.query.page,
       limit: req.query.limit,
     });
@@ -27,9 +46,17 @@ const getNotifications = async (req, res) => {
 
 const getUnreadCount = async (req, res) => {
   try {
-    const unreadCount = await notificationService.getUnreadCount(
-      req.user.id
-    );
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
+    const unreadCount =
+      await notificationService.getUnreadCount(userId);
 
     return res.status(200).json({
       success: true,
@@ -47,6 +74,15 @@ const getUnreadCount = async (req, res) => {
 
 const markAsRead = async (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
     const { notificationId } = req.params;
 
     if (!mongoose.isValidObjectId(notificationId)) {
@@ -59,7 +95,7 @@ const markAsRead = async (req, res) => {
     const notification =
       await notificationService.markNotificationAsRead({
         notificationId,
-        userId: req.user.id,
+        userId,
       });
 
     if (!notification) {
@@ -86,10 +122,17 @@ const markAsRead = async (req, res) => {
 
 const markAllAsRead = async (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
     const modifiedCount =
-      await notificationService.markAllNotificationsAsRead(
-        req.user.id
-      );
+      await notificationService.markAllNotificationsAsRead(userId);
 
     return res.status(200).json({
       success: true,
@@ -108,6 +151,15 @@ const markAllAsRead = async (req, res) => {
 
 const deleteNotification = async (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
     const { notificationId } = req.params;
 
     if (!mongoose.isValidObjectId(notificationId)) {
@@ -120,7 +172,7 @@ const deleteNotification = async (req, res) => {
     const notification =
       await notificationService.deleteNotification({
         notificationId,
-        userId: req.user.id,
+        userId,
       });
 
     if (!notification) {
@@ -146,8 +198,17 @@ const deleteNotification = async (req, res) => {
 
 const clearNotifications = async (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Valid user ID is missing.",
+      });
+    }
+
     const deletedCount =
-      await notificationService.clearNotifications(req.user.id);
+      await notificationService.clearNotifications(userId);
 
     return res.status(200).json({
       success: true,
