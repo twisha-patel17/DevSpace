@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -61,20 +60,39 @@ const initialPreferences = {
   lineNumbers: true,
 };
 
+const supportedLanguages = [
+  "Blank",
+  "JavaScript",
+  "Python",
+  "C++",
+  "Java",
+  "C",
+];
+
 const inputClass =
   "w-full rounded-xl border border-white/[0.09] bg-[#111113] px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10";
 
-const cardClass =
-  "rounded-2xl border border-white/[0.07] bg-[#18181b]";
+const cardClass = "rounded-2xl border border-white/[0.07] bg-[#18181b]";
+
+function getId(value) {
+  if (!value) return "";
+
+  if (typeof value === "string") return value;
+
+  if (typeof value === "object") {
+    return String(value._id ?? value.id ?? "");
+  }
+
+  return String(value);
+}
 
 function SettingLabel({ children, description }) {
   return (
     <div className="space-y-1">
       <p className="text-sm font-medium text-zinc-200">{children}</p>
+
       {description && (
-        <p className="text-xs leading-5 text-zinc-500">
-          {description}
-        </p>
+        <p className="text-xs leading-5 text-zinc-500">{description}</p>
       )}
     </div>
   );
@@ -107,9 +125,11 @@ function SectionHeading({ eyebrow, title, description }) {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
         {eyebrow}
       </p>
+
       <h2 className="text-2xl font-semibold tracking-tight text-white">
         {title}
       </h2>
+
       <p className="max-w-2xl text-sm leading-6 text-zinc-500">
         {description}
       </p>
@@ -123,28 +143,33 @@ export default function WorkspaceSettingsPage() {
 
   const [activeSection, setActiveSection] = useState("general");
   const [workspace, setWorkspace] = useState(null);
+
   const [form, setForm] = useState({
     name: "",
     description: "",
     language: "Blank",
     visibility: "private",
   });
+
   const [preferences, setPreferences] = useState(initialPreferences);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // Load workspace details.
   useEffect(() => {
     let cancelled = false;
 
     async function loadWorkspace() {
       setLoading(true);
       setError("");
+      setNotice("");
 
       try {
         const response = await api.get(`/workspaces/${workspaceId}`);
@@ -158,18 +183,26 @@ export default function WorkspaceSettingsPage() {
 
         const currentWorkspace = data?.workspace ?? data;
 
-        if (!currentWorkspace || !currentWorkspace._id) {
+        if (!currentWorkspace?._id) {
           throw new Error(
-            "The workspace response did not contain a workspace."
+            "The workspace response did not contain a valid workspace."
           );
         }
 
         setWorkspace(currentWorkspace);
+
         setForm({
           name: currentWorkspace.name ?? "",
           description: currentWorkspace.description ?? "",
-          language: currentWorkspace.language ?? "Blank",
-          visibility: currentWorkspace.visibility ?? "private",
+          language: supportedLanguages.includes(
+            currentWorkspace.language
+          )
+            ? currentWorkspace.language
+            : "Blank",
+          visibility:
+            currentWorkspace.visibility === "public"
+              ? "public"
+              : "private",
         });
       } catch (err) {
         if (!cancelled) {
@@ -180,36 +213,78 @@ export default function WorkspaceSettingsPage() {
           );
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadWorkspace();
+    if (workspaceId) {
+      loadWorkspace();
+    } else {
+      setError("Workspace ID is missing.");
+      setLoading(false);
+    }
 
     return () => {
       cancelled = true;
     };
   }, [workspaceId]);
 
+  // Load browser-local editor preferences for this workspace.
   useEffect(() => {
+    setPreferences(initialPreferences);
+
     try {
       const stored = localStorage.getItem(
         `devspace-editor-preferences-${workspaceId}`
       );
 
-      if (stored) {
-        setPreferences({
-          ...initialPreferences,
-          ...JSON.parse(stored),
-        });
-      }
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored);
+
+      if (!parsed || typeof parsed !== "object") return;
+
+      setPreferences({
+        fontSize:
+          Number.isFinite(Number(parsed.fontSize)) &&
+          Number(parsed.fontSize) >= 10 &&
+          Number(parsed.fontSize) <= 24
+            ? Number(parsed.fontSize)
+            : initialPreferences.fontSize,
+
+        tabSize: [2, 4, 8].includes(Number(parsed.tabSize))
+          ? Number(parsed.tabSize)
+          : initialPreferences.tabSize,
+
+        wordWrap: ["on", "off"].includes(parsed.wordWrap)
+          ? parsed.wordWrap
+          : initialPreferences.wordWrap,
+
+        minimap:
+          typeof parsed.minimap === "boolean"
+            ? parsed.minimap
+            : initialPreferences.minimap,
+
+        lineNumbers:
+          typeof parsed.lineNumbers === "boolean"
+            ? parsed.lineNumbers
+            : initialPreferences.lineNumbers,
+      });
     } catch {
-      // Keep the default editor preferences if stored data is invalid.
+      // Invalid browser storage should not break the settings page.
+      setPreferences(initialPreferences);
     }
   }, [workspaceId]);
 
   const updateForm = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    setError("");
     setNotice("");
   };
 
@@ -218,40 +293,96 @@ export default function WorkspaceSettingsPage() {
       ...current,
       [field]: value,
     }));
+
+    setNotice("");
+    setError("");
   };
 
-  const isOwner = Boolean(
-    workspace?.role === "owner" ||
-      workspace?.isOwner ||
-      workspace?.owner?._id === workspace?.currentUserId
+  // Use server-provided role information when available.
+  // Owner ID comparison is only possible when the current user ID is supplied.
+  const ownerId = getId(workspace?.owner);
+  const currentUserId = getId(
+    workspace?.currentUserId ?? workspace?.userId
   );
 
+  const isOwner = Boolean(
+    workspace?.isOwner === true ||
+      workspace?.role === "owner" ||
+      (ownerId &&
+        currentUserId &&
+        ownerId === currentUserId)
+  );
+
+  // Normalize both populated and unpopulated member records.
   const members = [
     ...(workspace?.owner
       ? [
           {
-            ...workspace.owner,
+            ...(typeof workspace.owner === "object"
+              ? workspace.owner
+              : {}),
+            _id: ownerId,
             role: "owner",
-            _id: workspace.owner._id,
           },
         ]
       : []),
+
     ...(Array.isArray(workspace?.members)
-      ? workspace.members.map((member) => ({
-          ...(member.user ?? member),
-          role: member.role ?? "editor",
-        }))
+      ? workspace.members.map((member) => {
+          const user = member?.user ?? member;
+
+          return {
+            ...(typeof user === "object" ? user : {}),
+            _id: getId(user),
+            role: member?.role ?? "viewer",
+          };
+        })
       : []),
   ].filter(
     (member, index, array) =>
       member._id &&
-      array.findIndex((item) => item._id === member._id) === index
+      array.findIndex(
+        (item) => item._id === member._id
+      ) === index
   );
 
+  // Save workspace settings.
   async function saveWorkspace() {
-    if (!form.name.trim()) {
+    if (!isOwner) {
+      setError("Only the workspace owner can update these settings.");
+      return;
+    }
+
+    const name = form.name.trim();
+    const description = form.description.trim();
+
+    if (!name) {
       setError("Workspace name cannot be empty.");
       setActiveSection("general");
+      return;
+    }
+
+    if (name.length > 60) {
+      setError("Workspace name cannot exceed 60 characters.");
+      setActiveSection("general");
+      return;
+    }
+
+    if (description.length > 200) {
+      setError("Description cannot exceed 200 characters.");
+      setActiveSection("general");
+      return;
+    }
+
+    if (!supportedLanguages.includes(form.language)) {
+      setError("Please select a supported default language.");
+      setActiveSection("general");
+      return;
+    }
+
+    if (!["private", "public"].includes(form.visibility)) {
+      setError("Please select a valid visibility setting.");
+      setActiveSection("access");
       return;
     }
 
@@ -260,31 +391,53 @@ export default function WorkspaceSettingsPage() {
     setNotice("");
 
     try {
-      await api.patch(`/workspaces/${workspaceId}`, {
-        name: form.name.trim(),
-        description: form.description.trim(),
+      const payload = {
+        name,
+        description,
         language: form.language,
         visibility: form.visibility,
-      });
+      };
+
+      const response = await api.patch(
+        `/workspaces/${workspaceId}`,
+        payload
+      );
+
+      const returnedWorkspace =
+        response.data?.workspace ??
+        response.data?.data?.workspace ??
+        response.data?.data;
 
       setWorkspace((current) => ({
         ...current,
-        ...form,
-        name: form.name.trim(),
-        description: form.description.trim(),
+        ...(returnedWorkspace &&
+        typeof returnedWorkspace === "object"
+          ? returnedWorkspace
+          : {}),
+        name,
+        description,
+        language: form.language,
+        visibility: form.visibility,
+      }));
+
+      setForm((current) => ({
+        ...current,
+        name,
+        description,
       }));
 
       setNotice("Workspace settings saved successfully.");
     } catch (err) {
       setError(
         err.response?.data?.message ||
-          "Could not save workspace settings. Check that the update API exists."
+          "Could not save workspace settings. Please check the update API and your permissions."
       );
     } finally {
       setSaving(false);
     }
   }
 
+  // Save editor preferences locally, not to the backend.
   function saveEditorPreferences() {
     try {
       localStorage.setItem(
@@ -292,29 +445,40 @@ export default function WorkspaceSettingsPage() {
         JSON.stringify(preferences)
       );
 
+      setError("");
       setNotice(
         "Editor preferences saved in this browser for this workspace."
       );
-      setError("");
     } catch {
       setError("Unable to save editor preferences in this browser.");
     }
   }
 
+  // Delete workspace after exact-name confirmation.
   async function deleteWorkspace() {
-    if (deleteConfirmation !== workspace?.name) return;
+    if (!isOwner) {
+      setError("Only the workspace owner can delete this workspace.");
+      return;
+    }
+
+    if (deleteConfirmation !== workspace?.name) {
+      setError("Enter the exact workspace name to confirm deletion.");
+      return;
+    }
 
     setDeleting(true);
     setError("");
 
     try {
       await api.delete(`/workspaces/${workspaceId}`);
+
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(
         err.response?.data?.message ||
-          "Could not delete this workspace. Check the delete API and your permissions."
+          "Could not delete this workspace. Check your permissions and try again."
       );
+
       setDeleting(false);
     }
   }
@@ -342,12 +506,15 @@ export default function WorkspaceSettingsPage() {
             size={32}
             className="mx-auto mb-4 text-red-400"
           />
+
           <h1 className="text-lg font-semibold text-white">
             Unable to load settings
           </h1>
+
           <p className="mt-2 text-sm leading-6 text-zinc-500">
             {error}
           </p>
+
           <button
             onClick={() => navigate(`/workspaces/${workspaceId}`)}
             className="mt-6 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black"
@@ -365,9 +532,7 @@ export default function WorkspaceSettingsPage() {
         <div className="mx-auto flex h-[68px] max-w-[1440px] items-center justify-between gap-4 px-5 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button
-              onClick={() =>
-                navigate(`/workspaces/${workspaceId}`)
-              }
+              onClick={() => navigate(`/workspaces/${workspaceId}`)}
               title="Back to editor"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] text-zinc-400 transition hover:bg-white/[0.05] hover:text-white"
             >
@@ -379,14 +544,17 @@ export default function WorkspaceSettingsPage() {
                 <span className="truncate text-sm font-semibold text-white">
                   {workspace?.name || "Workspace"}
                 </span>
+
                 <ChevronRight
                   size={13}
                   className="shrink-0 text-zinc-600"
                 />
+
                 <span className="shrink-0 text-sm text-zinc-400">
                   Settings
                 </span>
               </div>
+
               <p className="mt-0.5 text-xs text-zinc-600">
                 Workspace configuration
               </p>
@@ -397,10 +565,9 @@ export default function WorkspaceSettingsPage() {
             <span className="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-500">
               {workspace?.visibility || "private"}
             </span>
+
             <button
-              onClick={() =>
-                navigate(`/workspaces/${workspaceId}`)
-              }
+              onClick={() => navigate(`/workspaces/${workspaceId}`)}
               className="rounded-xl border border-white/[0.09] px-3.5 py-2 text-sm text-zinc-300 transition hover:bg-white/[0.05]"
             >
               Open editor
@@ -413,13 +580,16 @@ export default function WorkspaceSettingsPage() {
         <div className="mb-9 max-w-3xl">
           <div className="mb-3 flex items-center gap-2 text-emerald-400">
             <SlidersHorizontal size={17} />
+
             <span className="text-xs font-semibold uppercase tracking-[0.18em]">
               Workspace controls
             </span>
           </div>
+
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Workspace settings
           </h1>
+
           <p className="mt-3 text-sm leading-6 text-zinc-500 sm:text-base">
             Manage how this workspace works, who can access it,
             and how the coding environment behaves.
@@ -428,6 +598,7 @@ export default function WorkspaceSettingsPage() {
 
         {(error || notice) && (
           <div
+            role={error ? "alert" : "status"}
             className={`mb-6 flex items-start gap-3 rounded-xl border p-4 text-sm ${
               error
                 ? "border-red-500/20 bg-red-500/[0.06] text-red-300"
@@ -435,14 +606,19 @@ export default function WorkspaceSettingsPage() {
             }`}
           >
             {error ? (
-              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0"
+              />
             ) : (
               <CheckCircle2
                 size={18}
                 className="mt-0.5 shrink-0"
               />
             )}
+
             <span>{error || notice}</span>
+
             <button
               onClick={() => {
                 setError("");
@@ -478,10 +654,12 @@ export default function WorkspaceSettingsPage() {
                     }`}
                   >
                     <Icon size={18} className="shrink-0" />
+
                     <span className="min-w-0">
                       <span className="block text-sm font-medium">
                         {section.label}
                       </span>
+
                       <span
                         className={`mt-1 hidden text-xs lg:block ${
                           selected
@@ -500,10 +678,12 @@ export default function WorkspaceSettingsPage() {
             <div className="mt-7 hidden rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 lg:block">
               <div className="flex items-center gap-2 text-zinc-400">
                 <LockKeyhole size={15} />
+
                 <span className="text-xs font-medium">
                   Workspace-specific
                 </span>
               </div>
+
               <p className="mt-2 text-xs leading-5 text-zinc-600">
                 These options apply to this workspace, not your
                 entire DevSpace account.
@@ -525,18 +705,20 @@ export default function WorkspaceSettingsPage() {
                     <SettingLabel description="Give your workspace a recognizable name.">
                       Workspace name
                     </SettingLabel>
+
                     <input
                       className={inputClass}
                       value={form.name}
-                      maxLength={80}
+                      maxLength={60}
                       onChange={(event) =>
                         updateForm("name", event.target.value)
                       }
                       placeholder="My workspace"
                       disabled={!isOwner}
                     />
+
                     <p className="text-right text-xs text-zinc-600">
-                      {form.name.length}/80
+                      {form.name.length}/60
                     </p>
                   </div>
 
@@ -544,21 +726,20 @@ export default function WorkspaceSettingsPage() {
                     <SettingLabel description="Tell collaborators what this workspace is for.">
                       Description
                     </SettingLabel>
+
                     <textarea
                       className={`${inputClass} min-h-28 resize-y`}
                       value={form.description}
-                      maxLength={500}
+                      maxLength={200}
                       onChange={(event) =>
-                        updateForm(
-                          "description",
-                          event.target.value
-                        )
+                        updateForm("description", event.target.value)
                       }
                       placeholder="What are you building together?"
                       disabled={!isOwner}
                     />
+
                     <p className="text-right text-xs text-zinc-600">
-                      {form.description.length}/500
+                      {form.description.length}/200
                     </p>
                   </div>
 
@@ -566,6 +747,7 @@ export default function WorkspaceSettingsPage() {
                     <SettingLabel description="Choose the default language for new workspace files.">
                       Default language
                     </SettingLabel>
+
                     <select
                       className={inputClass}
                       value={form.language}
@@ -588,12 +770,14 @@ export default function WorkspaceSettingsPage() {
                       <p className="text-sm text-zinc-400">
                         Changes apply to this workspace.
                       </p>
+
                       {!isOwner && (
                         <p className="mt-1 text-xs text-amber-400">
                           Only the workspace owner can edit these details.
                         </p>
                       )}
                     </div>
+
                     <button
                       onClick={saveWorkspace}
                       disabled={saving || !isOwner}
@@ -607,6 +791,7 @@ export default function WorkspaceSettingsPage() {
                       ) : (
                         <Save size={16} />
                       )}
+
                       {saving ? "Saving..." : "Save changes"}
                     </button>
                   </div>
@@ -655,10 +840,7 @@ export default function WorkspaceSettingsPage() {
                             type="button"
                             disabled={!isOwner}
                             onClick={() =>
-                              updateForm(
-                                "visibility",
-                                option.value
-                              )
+                              updateForm("visibility", option.value)
                             }
                             className={`rounded-xl border p-4 text-left transition ${
                               selected
@@ -675,6 +857,7 @@ export default function WorkspaceSettingsPage() {
                                     : "text-zinc-400"
                                 }
                               />
+
                               <span
                                 className={`h-4 w-4 rounded-full border ${
                                   selected
@@ -683,9 +866,11 @@ export default function WorkspaceSettingsPage() {
                                 }`}
                               />
                             </div>
+
                             <p className="mt-4 text-sm font-semibold text-white">
                               {option.label}
                             </p>
+
                             <p className="mt-2 text-xs leading-5 text-zinc-500">
                               {option.description}
                             </p>
@@ -705,12 +890,21 @@ export default function WorkspaceSettingsPage() {
                     <p className="text-xs text-zinc-500">
                       Visibility changes require owner permissions.
                     </p>
+
                     <button
                       onClick={saveWorkspace}
                       disabled={saving || !isOwner}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-[#07130e] hover:bg-emerald-400 disabled:opacity-50"
                     >
-                      <Save size={16} />
+                      {saving ? (
+                        <LoaderCircle
+                          size={16}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Save size={16} />
+                      )}
+
                       Save visibility
                     </button>
                   </div>
@@ -732,11 +926,13 @@ export default function WorkspaceSettingsPage() {
                       <p className="font-medium text-white">
                         Workspace members
                       </p>
+
                       <p className="mt-1 text-xs text-zinc-500">
                         {members.length}{" "}
                         {members.length === 1 ? "member" : "members"} listed
                       </p>
                     </div>
+
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-zinc-400">
                       <Users size={19} />
                     </div>
@@ -767,16 +963,19 @@ export default function WorkspaceSettingsPage() {
                                 name.charAt(0).toUpperCase()
                               )}
                             </div>
+
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-zinc-200">
                                 {name}
                               </p>
+
                               {member.email && (
                                 <p className="mt-1 truncate text-xs text-zinc-500">
                                   {member.email}
                                 </p>
                               )}
                             </div>
+
                             <span
                               className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs capitalize ${
                                 member.role === "owner"
@@ -796,10 +995,12 @@ export default function WorkspaceSettingsPage() {
                         size={26}
                         className="mx-auto text-zinc-600"
                       />
+
                       <p className="mt-3 text-sm text-zinc-400">
                         Member details aren't available in the workspace
                         response.
                       </p>
+
                       <p className="mt-2 text-xs leading-5 text-zinc-600">
                         Check that the workspace endpoint populates its
                         owner and members.
@@ -817,8 +1018,9 @@ export default function WorkspaceSettingsPage() {
                       Manage collaborators in the workspace
                       <ChevronRight size={16} />
                     </button>
+
                     <p className="mt-2 text-xs leading-5 text-zinc-600">
-                      Role changes and invitations should use the existing
+                      Role changes and invitations use the existing
                       membership APIs and server-side permission checks.
                     </p>
                   </div>
@@ -840,10 +1042,12 @@ export default function WorkspaceSettingsPage() {
                       <SettingLabel description="Adjust the code editor text size.">
                         Font size
                       </SettingLabel>
+
                       <span className="rounded-lg border border-white/[0.08] px-3 py-1.5 font-mono text-sm text-emerald-300">
                         {preferences.fontSize}px
                       </span>
                     </div>
+
                     <input
                       type="range"
                       min="10"
@@ -858,6 +1062,7 @@ export default function WorkspaceSettingsPage() {
                       }
                       className="mt-5 w-full accent-emerald-500"
                     />
+
                     <div className="mt-2 flex justify-between text-xs text-zinc-600">
                       <span>10px</span>
                       <span>24px</span>
@@ -868,6 +1073,7 @@ export default function WorkspaceSettingsPage() {
                     <SettingLabel description="Number of spaces inserted by a tab.">
                       Tab size
                     </SettingLabel>
+
                     <select
                       value={preferences.tabSize}
                       onChange={(event) =>
@@ -888,13 +1094,11 @@ export default function WorkspaceSettingsPage() {
                     <SettingLabel description="Wrap long lines or allow horizontal scrolling.">
                       Word wrap
                     </SettingLabel>
+
                     <select
                       value={preferences.wordWrap}
                       onChange={(event) =>
-                        updatePreference(
-                          "wordWrap",
-                          event.target.value
-                        )
+                        updatePreference("wordWrap", event.target.value)
                       }
                       className="rounded-lg border border-white/[0.08] bg-[#111113] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-emerald-500/40"
                     >
@@ -924,6 +1128,7 @@ export default function WorkspaceSettingsPage() {
                       <SettingLabel description={item.description}>
                         {item.label}
                       </SettingLabel>
+
                       <Toggle
                         checked={preferences[item.key]}
                         onChange={(checked) =>
@@ -937,6 +1142,7 @@ export default function WorkspaceSettingsPage() {
                     <p className="text-xs text-zinc-500">
                       Preferences are saved separately for this workspace.
                     </p>
+
                     <button
                       onClick={saveEditorPreferences}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-[#07130e] transition hover:bg-emerald-400"
@@ -962,10 +1168,12 @@ export default function WorkspaceSettingsPage() {
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/[0.07] text-red-400">
                       <Trash2 size={20} />
                     </div>
+
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-white">
                         Delete workspace
                       </h3>
+
                       <p className="mt-2 text-sm leading-6 text-zinc-500">
                         Permanently remove this workspace. Depending on
                         your backend's deletion behavior, its files and
@@ -982,6 +1190,7 @@ export default function WorkspaceSettingsPage() {
                       <button
                         onClick={() => {
                           setDeleteConfirmation("");
+                          setError("");
                           setShowDeleteModal(true);
                         }}
                         disabled={!isOwner}
@@ -999,10 +1208,9 @@ export default function WorkspaceSettingsPage() {
               <span className="text-xs text-zinc-600">
                 {active?.label || "Workspace settings"}
               </span>
+
               <button
-                onClick={() =>
-                  navigate(`/workspaces/${workspaceId}`)
-                }
+                onClick={() => navigate(`/workspaces/${workspaceId}`)}
                 className="text-sm text-zinc-400 transition hover:text-white"
               >
                 Back to editor
@@ -1016,7 +1224,10 @@ export default function WorkspaceSettingsPage() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5 backdrop-blur-sm"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !deleting) {
+            if (
+              event.target === event.currentTarget &&
+              !deleting
+            ) {
               setShowDeleteModal(false);
             }
           }}
@@ -1031,8 +1242,12 @@ export default function WorkspaceSettingsPage() {
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/[0.08] text-red-400">
                 <Trash2 size={20} />
               </div>
+
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setError("");
+                }}
                 disabled={deleting}
                 className="rounded-lg p-2 text-zinc-500 hover:bg-white/[0.05] hover:text-white disabled:opacity-50"
                 aria-label="Close dialog"
@@ -1047,6 +1262,7 @@ export default function WorkspaceSettingsPage() {
             >
               Delete this workspace?
             </h2>
+
             <p className="mt-3 text-sm leading-6 text-zinc-400">
               This action cannot be undone. To confirm, type the workspace
               name exactly as shown below.
@@ -1059,12 +1275,26 @@ export default function WorkspaceSettingsPage() {
             <input
               autoFocus
               value={deleteConfirmation}
-              onChange={(event) =>
-                setDeleteConfirmation(event.target.value)
-              }
+              onChange={(event) => {
+                setDeleteConfirmation(event.target.value);
+                setError("");
+              }}
               placeholder="Enter workspace name"
               className={inputClass}
               disabled={deleting}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  deleteConfirmation === workspace?.name &&
+                  !deleting
+                ) {
+                  deleteWorkspace();
+                }
+
+                if (event.key === "Escape" && !deleting) {
+                  setShowDeleteModal(false);
+                }
+              }}
             />
 
             {error && (
@@ -1073,12 +1303,16 @@ export default function WorkspaceSettingsPage() {
 
             <div className="mt-6 flex gap-3">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setError("");
+                }}
                 disabled={deleting}
                 className="flex-1 rounded-xl border border-white/[0.09] px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-white/[0.04] disabled:opacity-50"
               >
                 Cancel
               </button>
+
               <button
                 onClick={deleteWorkspace}
                 disabled={
@@ -1089,8 +1323,12 @@ export default function WorkspaceSettingsPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {deleting && (
-                  <LoaderCircle size={16} className="animate-spin" />
+                  <LoaderCircle
+                    size={16}
+                    className="animate-spin"
+                  />
                 )}
+
                 {deleting ? "Deleting..." : "Delete workspace"}
               </button>
             </div>

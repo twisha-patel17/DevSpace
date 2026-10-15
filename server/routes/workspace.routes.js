@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -27,8 +26,10 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+// All workspace routes require authentication.
 router.use(authMiddleware);
 
+// Workspace CRUD
 router.post("/", createWorkspaceController);
 
 router.get("/", getWorkspacesController);
@@ -37,9 +38,16 @@ router.get("/recent", getRecentWorkspacesController);
 
 router.get("/shared", getSharedWorkspacesController);
 
-router.get("/:workspaceId/files", getWorkspaceFilesController);
+// Workspace file and folder operations
+router.get(
+  "/:workspaceId/files",
+  getWorkspaceFilesController
+);
 
-router.post("/:workspaceId/files", createWorkspaceFileController);
+router.post(
+  "/:workspaceId/files",
+  createWorkspaceFileController
+);
 
 router.patch(
   "/:workspaceId/files/:fileId",
@@ -51,20 +59,41 @@ router.delete(
   deleteWorkspaceFileController
 );
 
-router.patch("/:workspaceId/opened", markWorkspaceOpenedController);
+// Workspace activity
+router.patch(
+  "/:workspaceId/opened",
+  markWorkspaceOpenedController
+);
 
+// Workspace member search
 router.get(
   "/:workspaceId/members/search",
   searchWorkspaceMembers
 );
 
-router.get("/:workspaceId", getWorkspaceController);
+// Individual workspace
+router.get(
+  "/:workspaceId",
+  getWorkspaceController
+);
 
-router.patch("/:workspaceId", updateWorkspaceController);
+// Workspace-specific settings
+router.patch(
+  "/:workspaceId",
+  updateWorkspaceController
+);
 
-router.delete("/:workspaceId", deleteWorkspaceController);
+// Delete workspace
+router.delete(
+  "/:workspaceId",
+  deleteWorkspaceController
+);
 
-router.post("/:workspaceId/members", addWorkspaceMemberController);
+// Workspace member management
+router.post(
+  "/:workspaceId/members",
+  addWorkspaceMemberController
+);
 
 router.patch(
   "/:workspaceId/members/:memberUserId",
