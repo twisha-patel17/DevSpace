@@ -12,6 +12,7 @@ import RecentPage from "./pages/RecentPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import ActivityPage from "./pages/ActivityPage";
+import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 
 import AppLayout from "./components/layout/AppLayout";
 
@@ -60,6 +61,11 @@ const AppRoutes = () => {
         <Route path="/activity" element={<ActivityPage />} />
 
         <Route path="/settings" element={<SettingsPage />} />
+
+        <Route
+          path="/workspaces/:workspaceId/settings"
+          element={<WorkspaceSettingsPage />}
+        />
       </Route>
     </Routes>
   );
