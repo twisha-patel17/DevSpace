@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
 import {
   X,
   Lock,
@@ -7,6 +8,8 @@ import {
   FileCode2,
   Atom,
   Terminal,
+  LoaderCircle,
+  AlertCircle,
 } from "lucide-react";
 
 const templates = [
@@ -23,7 +26,7 @@ const templates = [
     id: "javascript",
     name: "JavaScript",
     shortName: "JS",
-    language: "JS",
+    language: "JavaScript",
     languageName: "JavaScript",
     languageColor: "bg-[#302f1c] text-[#e5c82d]",
     icon: FileCode2,
@@ -32,8 +35,8 @@ const templates = [
     id: "react",
     name: "React",
     shortName: "React",
-    language: "React",
-    languageName: "React",
+    language: "JavaScript",
+    languageName: "JavaScript",
     languageColor: "bg-[#1c2638] text-[#72a4e2]",
     icon: Atom,
   },
@@ -41,7 +44,7 @@ const templates = [
     id: "python",
     name: "Python",
     shortName: "PY",
-    language: "PY",
+    language: "Python",
     languageName: "Python",
     languageColor: "bg-[#1c3029] text-[#65bc8d]",
     icon: Terminal,
@@ -57,6 +60,9 @@ const templates = [
   },
 ];
 
+const DEFAULT_LANGUAGE_COLOR =
+  "bg-[#252629] text-zinc-300";
+
 const CreateWorkspaceModal = ({
   isOpen,
   onClose,
@@ -67,53 +73,108 @@ const CreateWorkspaceModal = ({
   const [template, setTemplate] = useState("blank");
   const [visibility, setVisibility] = useState("private");
 
-  if (!isOpen) return null;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setError("");
+    }
+  }, [isOpen]);
 
   const resetForm = () => {
     setWorkspaceName("");
     setDescription("");
     setTemplate("blank");
     setVisibility("private");
+    setError("");
+    setLoading(false);
   };
 
   const handleClose = () => {
+    if (loading) return;
+
     resetForm();
     onClose();
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const name = workspaceName.trim();
+    if (loading) return;
 
-    if (!name) return;
+    const name = workspaceName.trim();
+    const trimmedDescription = description.trim();
+
+    if (!name) {
+      setError("Please enter a workspace name.");
+      return;
+    }
+
+    if (name.length > 60) {
+      setError("Workspace name cannot exceed 60 characters.");
+      return;
+    }
+
+    if (trimmedDescription.length > 200) {
+      setError("Description cannot exceed 200 characters.");
+      return;
+    }
 
     const selectedTemplate = templates.find(
       (item) => item.id === template
     );
 
+    if (!selectedTemplate) {
+      setError("Please select a valid template.");
+      return;
+    }
+
+    /*
+     * Important:
+     * The backend Workspace model expects `name`,
+     * not only `title`.
+     *
+     * Language values are normalized so the backend
+     * receives JavaScript/Python instead of JS/PY.
+     */
     const workspaceData = {
-      title: name,
-      description:
-        description.trim() || "No description",
+      name,
+      description: trimmedDescription,
       template,
       visibility,
+      language: selectedTemplate.language,
 
-      language:
-        selectedTemplate?.language || "Blank",
-
-      languageName:
-        selectedTemplate?.languageName || "Blank",
-
+      // Kept for compatibility with existing UI code.
+      // The backend can ignore these extra fields.
+      title: name,
+      languageName: selectedTemplate.languageName,
       languageColor:
-        selectedTemplate?.languageColor ||
-        "bg-[#252629] text-zinc-300",
+        selectedTemplate.languageColor ||
+        DEFAULT_LANGUAGE_COLOR,
     };
 
-    onCreate(workspaceData);
+    try {
+      setLoading(true);
+      setError("");
 
-    resetForm();
+      await onCreate(workspaceData);
+
+      resetForm();
+    } catch (err) {
+      console.error("Create workspace failed:", err);
+
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to create the workspace. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -144,9 +205,7 @@ const CreateWorkspaceModal = ({
         "
         onMouseDown={(e) => e.stopPropagation()}
       >
-
-        {/* ================= HEADER ================= */}
-
+        {/* Header */}
         <div
           className="
             flex shrink-0
@@ -157,24 +216,11 @@ const CreateWorkspaceModal = ({
           "
         >
           <div className="min-w-0 pr-4">
-            <h2
-              className="
-                text-[15px]
-                font-semibold
-                text-zinc-100
-              "
-            >
+            <h2 className="text-[15px] font-semibold text-zinc-100">
               Create a new workspace
             </h2>
 
-            <p
-              className="
-                mt-1
-                text-[10px]
-                leading-4
-                text-zinc-600
-              "
-            >
+            <p className="mt-1 text-[10px] leading-4 text-zinc-600">
               Start a new collaborative coding environment
             </p>
           </div>
@@ -182,6 +228,7 @@ const CreateWorkspaceModal = ({
           <button
             type="button"
             onClick={handleClose}
+            disabled={loading}
             aria-label="Close"
             className="
               flex h-8 w-8 shrink-0
@@ -191,14 +238,15 @@ const CreateWorkspaceModal = ({
               transition-colors
               hover:bg-white/[0.06]
               hover:text-zinc-200
+              disabled:cursor-not-allowed
+              disabled:opacity-40
             "
           >
             <X size={17} />
           </button>
         </div>
 
-        {/* ================= FORM ================= */}
-
+        {/* Form */}
         <form
           onSubmit={handleSubmit}
           className="flex min-h-0 flex-1 flex-col"
@@ -212,9 +260,7 @@ const CreateWorkspaceModal = ({
             "
           >
             <div className="space-y-5">
-
-              {/* Workspace Name */}
-
+              {/* Workspace name */}
               <div>
                 <label
                   htmlFor="workspace-name"
@@ -232,12 +278,16 @@ const CreateWorkspaceModal = ({
                   id="workspace-name"
                   type="text"
                   value={workspaceName}
-                  onChange={(e) =>
-                    setWorkspaceName(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setWorkspaceName(e.target.value);
+                    setError("");
+                  }}
                   placeholder="e.g. Portfolio, Hackathon Sprint"
                   autoFocus
+                  autoComplete="off"
                   maxLength={60}
+                  disabled={loading}
+                  required
                   className="
                     h-10 w-full
                     rounded-lg
@@ -252,12 +302,16 @@ const CreateWorkspaceModal = ({
                     focus:border-[#dc9458]/50
                     focus:ring-1
                     focus:ring-[#dc9458]/20
+                    disabled:opacity-50
                   "
                 />
+
+                <p className="mt-1 text-right text-[9px] text-zinc-700">
+                  {workspaceName.trim().length}/60
+                </p>
               </div>
 
               {/* Description */}
-
               <div>
                 <label
                   htmlFor="workspace-description"
@@ -269,7 +323,6 @@ const CreateWorkspaceModal = ({
                   "
                 >
                   Description
-
                   <span className="ml-1 text-zinc-700">
                     (optional)
                   </span>
@@ -278,12 +331,14 @@ const CreateWorkspaceModal = ({
                 <textarea
                   id="workspace-description"
                   value={description}
-                  onChange={(e) =>
-                    setDescription(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setError("");
+                  }}
                   placeholder="What is this workspace for?"
                   rows={3}
                   maxLength={200}
+                  disabled={loading}
                   className="
                     w-full
                     resize-none
@@ -300,10 +355,16 @@ const CreateWorkspaceModal = ({
                     focus:border-[#dc9458]/50
                     focus:ring-1
                     focus:ring-[#dc9458]/20
+                    disabled:opacity-50
                   "
                 />
+
+                <p className="mt-1 text-right text-[9px] text-zinc-700">
+                  {description.length}/200
+                </p>
               </div>
 
+              {/* Template */}
               <div>
                 <label
                   className="
@@ -326,25 +387,28 @@ const CreateWorkspaceModal = ({
                 >
                   {templates.map((item) => {
                     const Icon = item.icon;
-                    const selected =
-                      template === item.id;
+                    const selected = template === item.id;
 
                     return (
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() =>
-                          setTemplate(item.id)
-                        }
+                        disabled={loading}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setTemplate(item.id);
+                          setError("");
+                        }}
                         className={`
                           flex min-h-[62px]
-                          items-center
-                          justify-center
+                          items-center justify-center
                           gap-1.5
                           rounded-lg
                           border
                           px-2 py-2
                           transition-all duration-150
+                          disabled:cursor-not-allowed
+                          disabled:opacity-50
 
                           ${
                             selected
@@ -366,24 +430,25 @@ const CreateWorkspaceModal = ({
                           max-[360px]:min-h-[56px]
                         `}
                       >
-                        <Icon
-                          size={14}
-                          strokeWidth={1.8}
-                        />
+                        <Icon size={14} strokeWidth={1.8} />
 
-                        <span
-                          className="
-                            text-[9px]
-                            font-medium
-                          "
-                        >
+                        <span className="text-[9px] font-medium">
                           {item.shortName}
                         </span>
                       </button>
                     );
                   })}
                 </div>
+
+                <p className="mt-2 text-[10px] leading-4 text-zinc-600">
+                  Selected:{" "}
+                  <span className="text-zinc-400">
+                    {templates.find((item) => item.id === template)?.name}
+                  </span>
+                </p>
               </div>
+
+              {/* Visibility */}
               <div>
                 <label
                   className="
@@ -397,31 +462,25 @@ const CreateWorkspaceModal = ({
                 </label>
 
                 <div className="grid gap-2 sm:grid-cols-2">
+                  {/* Private */}
                   <button
                     type="button"
-                    onClick={() =>
-                      setVisibility("private")
-                    }
+                    disabled={loading}
+                    aria-pressed={visibility === "private"}
+                    onClick={() => setVisibility("private")}
                     className={`
                       flex min-h-[58px]
                       items-center gap-3
-                      rounded-lg
-                      border
-                      px-3
-                      text-left
+                      rounded-lg border
+                      px-3 text-left
                       transition-all
+                      disabled:cursor-not-allowed
+                      disabled:opacity-50
 
                       ${
                         visibility === "private"
-                          ? `
-                            border-[#dc9458]
-                            bg-[#2c231d]
-                          `
-                          : `
-                            border-white/[0.07]
-                            bg-[#111214]
-                            hover:border-white/[0.13]
-                          `
+                          ? "border-[#dc9458] bg-[#2c231d]"
+                          : "border-white/[0.07] bg-[#111214] hover:border-white/[0.13]"
                       }
                     `}
                   >
@@ -433,14 +492,8 @@ const CreateWorkspaceModal = ({
 
                         ${
                           visibility === "private"
-                            ? `
-                              bg-[#dc9458]/10
-                              text-[#df9758]
-                            `
-                            : `
-                              bg-white/[0.04]
-                              text-zinc-500
-                            `
+                            ? "bg-[#dc9458]/10 text-[#df9758]"
+                            : "bg-white/[0.04] text-zinc-500"
                         }
                       `}
                     >
@@ -450,8 +503,7 @@ const CreateWorkspaceModal = ({
                     <div className="min-w-0">
                       <p
                         className={`
-                          text-[11px]
-                          font-medium
+                          text-[11px] font-medium
                           ${
                             visibility === "private"
                               ? "text-zinc-200"
@@ -462,46 +514,31 @@ const CreateWorkspaceModal = ({
                         Private
                       </p>
 
-                      <p
-                        className="
-                          mt-0.5
-                          text-[9px]
-                          leading-4
-                          text-zinc-600
-                        "
-                      >
+                      <p className="mt-0.5 text-[9px] leading-4 text-zinc-600">
                         Only you and invited users
                       </p>
                     </div>
                   </button>
 
-                  {/* PUBLIC */}
-
+                  {/* Public */}
                   <button
                     type="button"
-                    onClick={() =>
-                      setVisibility("public")
-                    }
+                    disabled={loading}
+                    aria-pressed={visibility === "public"}
+                    onClick={() => setVisibility("public")}
                     className={`
                       flex min-h-[58px]
                       items-center gap-3
-                      rounded-lg
-                      border
-                      px-3
-                      text-left
+                      rounded-lg border
+                      px-3 text-left
                       transition-all
+                      disabled:cursor-not-allowed
+                      disabled:opacity-50
 
                       ${
                         visibility === "public"
-                          ? `
-                            border-[#dc9458]
-                            bg-[#2c231d]
-                          `
-                          : `
-                            border-white/[0.07]
-                            bg-[#111214]
-                            hover:border-white/[0.13]
-                          `
+                          ? "border-[#dc9458] bg-[#2c231d]"
+                          : "border-white/[0.07] bg-[#111214] hover:border-white/[0.13]"
                       }
                     `}
                   >
@@ -513,14 +550,8 @@ const CreateWorkspaceModal = ({
 
                         ${
                           visibility === "public"
-                            ? `
-                              bg-[#dc9458]/10
-                              text-[#df9758]
-                            `
-                            : `
-                              bg-white/[0.04]
-                              text-zinc-500
-                            `
+                            ? "bg-[#dc9458]/10 text-[#df9758]"
+                            : "bg-white/[0.04] text-zinc-500"
                         }
                       `}
                     >
@@ -530,8 +561,7 @@ const CreateWorkspaceModal = ({
                     <div className="min-w-0">
                       <p
                         className={`
-                          text-[11px]
-                          font-medium
+                          text-[11px] font-medium
                           ${
                             visibility === "public"
                               ? "text-zinc-200"
@@ -542,25 +572,41 @@ const CreateWorkspaceModal = ({
                         Public
                       </p>
 
-                      <p
-                        className="
-                          mt-0.5
-                          text-[9px]
-                          leading-4
-                          text-zinc-600
-                        "
-                      >
+                      <p className="mt-0.5 text-[9px] leading-4 text-zinc-600">
                         Anyone with the link
                       </p>
                     </div>
                   </button>
-
                 </div>
               </div>
 
+              {/* Error message */}
+              {error && (
+                <div
+                  role="alert"
+                  className="
+                    flex items-start gap-2
+                    rounded-lg
+                    border border-red-500/20
+                    bg-red-500/[0.06]
+                    px-3 py-2.5
+                    text-[11px]
+                    leading-5
+                    text-red-300
+                  "
+                >
+                  <AlertCircle
+                    size={14}
+                    className="mt-0.5 shrink-0"
+                  />
+
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Footer */}
           <div
             className="
               flex shrink-0
@@ -576,9 +622,9 @@ const CreateWorkspaceModal = ({
             <button
               type="button"
               onClick={handleClose}
+              disabled={loading}
               className="
-                h-9
-                w-full
+                h-9 w-full
                 rounded-lg
                 border border-white/[0.08]
                 bg-[#111214]
@@ -589,6 +635,8 @@ const CreateWorkspaceModal = ({
                 transition-colors
                 hover:bg-white/[0.04]
                 hover:text-zinc-200
+                disabled:cursor-not-allowed
+                disabled:opacity-40
                 sm:w-auto
               "
             >
@@ -597,10 +645,11 @@ const CreateWorkspaceModal = ({
 
             <button
               type="submit"
-              disabled={!workspaceName.trim()}
+              disabled={!workspaceName.trim() || loading}
               className="
-                h-9
-                w-full
+                flex h-9 w-full
+                items-center justify-center
+                gap-2
                 rounded-lg
                 bg-[#dc9458]
                 px-4
@@ -615,7 +664,17 @@ const CreateWorkspaceModal = ({
                 sm:w-auto
               "
             >
-              Create Workspace
+              {loading ? (
+                <>
+                  <LoaderCircle
+                    size={14}
+                    className="animate-spin"
+                  />
+                  Creating...
+                </>
+              ) : (
+                "Create Workspace"
+              )}
             </button>
           </div>
         </form>

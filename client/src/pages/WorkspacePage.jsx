@@ -100,13 +100,14 @@ const getLanguageFromFileName = (name) => {
 };
 
 const getFilePath = (name, parentValue, files) => {
-  // FileTree may pass either the folder ID or the full folder object.
   const parentId =
     parentValue && typeof parentValue === "object"
       ? parentValue._id || parentValue.id || parentValue.fileId
       : parentValue;
 
-  const cleanName = String(name || "").trim().replace(/^\/+|\/+$/g, "");
+  const cleanName = String(name || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
 
   if (!cleanName) {
     throw new Error("Enter a valid file or folder name.");
@@ -129,6 +130,7 @@ const getFilePath = (name, parentValue, files) => {
   }
 
   const parentPath = String(parent.path || "").replace(/^\/+|\/+$/g, "");
+
   return `/${[parentPath, cleanName].filter(Boolean).join("/")}`;
 };
 
@@ -198,6 +200,7 @@ const WorkspacePage = () => {
 
   const [code, setCode] = useState("");
   const [output, setOutput] = useState("");
+  const [stdin, setStdin] = useState("");
 
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -207,11 +210,14 @@ const WorkspacePage = () => {
   const filesRef = useRef(files);
   const activeFileIdRef = useRef(activeFileId);
   const codeRef = useRef(code);
+  const stdinRef = useRef(stdin);
   const isDirtyRef = useRef(isDirty);
 
+  // Keep refs synchronized with the latest React state.
   filesRef.current = files;
   activeFileIdRef.current = activeFileId;
   codeRef.current = code;
+  stdinRef.current = stdin;
   isDirtyRef.current = isDirty;
 
   const [fileModal, setFileModal] = useState({
@@ -263,7 +269,7 @@ const WorkspacePage = () => {
 
   const isReadOnly = currentRole === "viewer";
 
-  // Load eligible users using the existing backend search endpoint.
+  // Search for eligible users when the share modal is open.
   useEffect(() => {
     if (!showShareModal || !isWorkspaceOwner) return undefined;
 
@@ -347,7 +353,6 @@ const WorkspacePage = () => {
     setShareRole("editor");
   };
 
-  // Add a selected user to the workspace.
   const handleShareWorkspace = async (event) => {
     event.preventDefault();
 
@@ -383,9 +388,7 @@ const WorkspacePage = () => {
 
       const invitedUsername = selectedShareUser.username || "User";
 
-      setShareSuccess(
-        `${invitedUsername} was added as ${shareRole}.`
-      );
+      setShareSuccess(`${invitedUsername} was added as ${shareRole}.`);
 
       setSelectedShareUser(null);
       setShareSearch("");
@@ -412,7 +415,6 @@ const WorkspacePage = () => {
     }
   };
 
-  // Update an existing collaborator's role.
   const handleMemberRoleChange = async (memberUserId, role) => {
     if (!isWorkspaceOwner) return;
     if (!memberUserId || !["editor", "viewer"].includes(role)) return;
@@ -446,7 +448,6 @@ const WorkspacePage = () => {
     }
   };
 
-  // Remove a collaborator.
   const handleRemoveMember = async (memberUserId, username) => {
     if (!isWorkspaceOwner || !memberUserId) return;
 
@@ -484,7 +485,7 @@ const WorkspacePage = () => {
 
   // Real-time workspace collaboration.
   useEffect(() => {
-    if (!workspaceId || !accessToken) return;
+    if (!workspaceId || !accessToken) return undefined;
 
     let joined = false;
 
@@ -580,7 +581,7 @@ const WorkspacePage = () => {
 
   // Listen for file changes made by other collaborators.
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) return undefined;
 
     let refreshInProgress = false;
     let refreshQueued = false;
@@ -596,7 +597,9 @@ const WorkspacePage = () => {
 
       if (fileId === activeFileIdRef.current) {
         isRemoteUpdate.current = true;
+        codeRef.current = content || "";
         setCode(content || "");
+        isDirtyRef.current = false;
         setIsDirty(false);
       }
     };
@@ -632,6 +635,7 @@ const WorkspacePage = () => {
             updatedFiles.find((file) => file.type === "file") || null;
 
           activeFileIdRef.current = nextFile?._id || null;
+          codeRef.current = nextFile?.content || "";
           setActiveFileId(nextFile?._id || null);
           setCode(nextFile?.content || "");
           setIsDirty(false);
@@ -704,9 +708,6 @@ const WorkspacePage = () => {
         if (cancelled) return;
 
         if (!loadedFiles || loadedFiles.length === 0) {
-          // A viewer must never trigger a write operation just by opening
-          // an empty workspace. Resolve the role from the freshly fetched
-          // workspace because React state updates are asynchronous.
           const loadedOwnerId = getIdString(
             loadedWorkspace?.owner || loadedWorkspace?.createdBy
           );
@@ -752,7 +753,6 @@ const WorkspacePage = () => {
 
             loadedFiles = [defaultFile];
           } else {
-            // Leave the explorer empty for viewers; do not attempt to create.
             loadedFiles = [];
           }
         }
@@ -765,6 +765,7 @@ const WorkspacePage = () => {
           loadedFiles.find((file) => file.type === "file") || null;
 
         activeFileIdRef.current = firstFile?._id || null;
+        codeRef.current = firstFile?.content || "";
         setActiveFileId(firstFile?._id || null);
         setCode(firstFile?.content || "");
 
@@ -795,7 +796,7 @@ const WorkspacePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [workspaceId, currentUserId]);
 
   const handleFileSelect = (fileId) => {
     const file = filesRef.current.find((item) => item._id === fileId);
@@ -814,8 +815,10 @@ const WorkspacePage = () => {
     isRemoteUpdate.current = false;
 
     activeFileIdRef.current = file._id;
+    codeRef.current = file.content || "";
     setActiveFileId(file._id);
     setCode(file.content || "");
+    isDirtyRef.current = false;
     setIsDirty(false);
     setOutput("");
 
@@ -886,7 +889,6 @@ const WorkspacePage = () => {
         throw new Error("Choose whether to create a file or folder.");
       }
 
-      // FileTree can provide a folder object or an ID; the API must receive an ID.
       const parentId =
         fileModal.parent && typeof fileModal.parent === "object"
           ? fileModal.parent._id ||
@@ -902,7 +904,6 @@ const WorkspacePage = () => {
         parent: parentId,
       };
 
-      // Folder documents don't need editor language or source content.
       if (type === "file") {
         fileData.language = getLanguageFromFileName(name);
         fileData.content = "";
@@ -922,8 +923,10 @@ const WorkspacePage = () => {
 
       if (type === "file") {
         activeFileIdRef.current = file._id;
+        codeRef.current = file.content || "";
         setActiveFileId(file._id);
         setCode(file.content || "");
+        isDirtyRef.current = false;
         setIsDirty(false);
         setOutput("");
 
@@ -938,7 +941,9 @@ const WorkspacePage = () => {
       console.error("Failed to create file:", err);
 
       setOutput(
-        err.response?.data?.message || "Failed to create file."
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to create file."
       );
     }
   };
@@ -984,7 +989,8 @@ const WorkspacePage = () => {
       console.error("Failed to rename file:", err);
 
       setOutput(
-        err.response?.data?.message || "Failed to rename file."
+        err.response?.data?.message ||
+          "Failed to rename file."
       );
     }
   };
@@ -1020,8 +1026,10 @@ const WorkspacePage = () => {
           ) || null;
 
         activeFileIdRef.current = nextFile?._id || null;
+        codeRef.current = nextFile?.content || "";
         setActiveFileId(nextFile?._id || null);
         setCode(nextFile?.content || "");
+        isDirtyRef.current = false;
         setIsDirty(false);
         setOutput("");
 
@@ -1045,6 +1053,7 @@ const WorkspacePage = () => {
     if (isReadOnly) return;
 
     const newContent = value ?? "";
+    codeRef.current = newContent;
 
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
@@ -1053,6 +1062,7 @@ const WorkspacePage = () => {
     }
 
     setCode(newContent);
+    isDirtyRef.current = true;
     setIsDirty(true);
     setOutput("");
 
@@ -1098,7 +1108,9 @@ const WorkspacePage = () => {
         )
       );
 
+      codeRef.current = updatedFile.content || "";
       setCode(updatedFile.content || "");
+      isDirtyRef.current = false;
       setIsDirty(false);
     } catch (err) {
       console.error("Failed to save file:", err);
@@ -1111,7 +1123,10 @@ const WorkspacePage = () => {
     }
   };
 
+  // Execute the active file with the latest editor code and stdin.
   const handleRun = async () => {
+    if (isRunning) return;
+
     const currentFile = filesRef.current.find(
       (file) => file._id === activeFileIdRef.current
     );
@@ -1140,8 +1155,17 @@ const WorkspacePage = () => {
 
     if (!executionLanguage) {
       setOutput(
-        `Running "${currentFile.name}" is not supported yet.\n\nSupported files:\n• JavaScript (.js)\n• Python (.py)\n• C++ (.cpp)`
+        "This file type is not supported for execution yet. " +
+          "Supported languages: JavaScript, Python, and C++."
       );
+      return;
+    }
+
+    const codeToRun = codeRef.current;
+    const inputToSend = stdinRef.current;
+
+    if (typeof codeToRun !== "string" || !codeToRun.trim()) {
+      setOutput("Your file is empty. Add some code before running it.");
       return;
     }
 
@@ -1149,29 +1173,46 @@ const WorkspacePage = () => {
       setIsRunning(true);
       setOutput(`Running ${currentFile.name}...\n`);
 
+      console.log("=== DEVSPACE EXECUTION REQUEST ===");
+      console.log("File:", currentFile.name);
+      console.log("Language:", executionLanguage);
+      console.log("Stdin:", JSON.stringify(inputToSend));
+      console.log("Code length:", codeToRun.length);
+      console.log("==================================");
+
       const response = await api.post("/execution/run", {
         language: executionLanguage,
-        code: codeRef.current,
-        stdin: "",
+        code: codeToRun,
+        stdin: inputToSend,
       });
 
-      const result = response.data.result;
-      const outputParts = [];
+      const result = response.data?.result;
 
-      if (result.compileError) {
-        outputParts.push(`COMPILE ERROR\n\n${result.compileError}`);
+      if (!result) {
+        setOutput("Execution failed: the server returned no result.");
+        return;
       }
 
-      if (result.compileOutput) {
-        outputParts.push(`COMPILE OUTPUT\n\n${result.compileOutput}`);
+      const outputParts = [];
+
+      if (result.compileError?.trim()) {
+        outputParts.push(
+          `COMPILE ERROR\n\n${result.compileError.trim()}`
+        );
+      }
+
+      if (result.compileOutput?.trim()) {
+        outputParts.push(
+          `COMPILE OUTPUT\n\n${result.compileOutput.trim()}`
+        );
       }
 
       if (result.stdout) {
-        outputParts.push(`OUTPUT\n\n${result.stdout}`);
+        outputParts.push(`OUTPUT\n\n${result.stdout.trimEnd()}`);
       }
 
       if (result.stderr) {
-        outputParts.push(`ERROR\n\n${result.stderr}`);
+        outputParts.push(`ERROR\n\n${result.stderr.trimEnd()}`);
       }
 
       if (
@@ -1181,15 +1222,39 @@ const WorkspacePage = () => {
         !result.compileOutput &&
         result.output
       ) {
-        outputParts.push(result.output);
+        outputParts.push(result.output.trimEnd());
       }
 
-      if (result.exitCode !== null && result.exitCode !== undefined) {
-        outputParts.push(`\nProcess exited with code ${result.exitCode}`);
+      if (result.compileSignal) {
+        outputParts.push(
+          `Compilation terminated by signal: ${result.compileSignal}`
+        );
+      }
+
+      if (
+        result.compileExitCode !== null &&
+        result.compileExitCode !== undefined &&
+        result.compileExitCode !== 0
+      ) {
+        outputParts.push(
+          `Compilation exited with code ${result.compileExitCode}`
+        );
       }
 
       if (result.signal) {
-        outputParts.push(`\nProcess terminated by signal: ${result.signal}`);
+        outputParts.push(
+          `Process terminated by signal: ${result.signal}`
+        );
+      }
+
+      if (result.exitCode !== null && result.exitCode !== undefined) {
+        outputParts.push(`Process exited with code ${result.exitCode}`);
+      }
+
+      if (result.timedOut) {
+        outputParts.push(
+          "Execution was terminated by a time or resource limit."
+        );
       }
 
       setOutput(
@@ -1201,7 +1266,10 @@ const WorkspacePage = () => {
       console.error("Code execution failed:", err);
 
       setOutput(
-        err.response?.data?.message || "Code execution failed."
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          "Code execution failed."
       );
     } finally {
       setIsRunning(false);
@@ -1617,40 +1685,93 @@ const WorkspacePage = () => {
           </div>
 
           {/* Output panel */}
-          <div className="flex h-36 shrink-0 flex-col border-t border-white/10 bg-[#0e1012]">
+          <div className="flex h-52 shrink-0 flex-col border-t border-white/10 bg-[#0e1012]">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
               <div className="flex items-center gap-2">
                 <Terminal size={14} className="text-[#dc9458]" />
                 <span className="text-xs font-medium text-zinc-400">
-                  Output
+                  Run &amp; Output
                 </span>
+                {isRunning && (
+                  <span className="text-[10px] text-[#dc9458]">
+                    Running...
+                  </span>
+                )}
               </div>
 
-              {output && (
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setOutput("")}
-                  className="text-[11px] text-zinc-600 transition hover:text-zinc-300"
+                  type="button"
+                  onClick={() => {
+                    stdinRef.current = "";
+                    setStdin("");
+                  }}
+                  disabled={!stdin || isRunning}
+                  className="text-[11px] text-zinc-600 transition hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Clear
+                  Clear input
                 </button>
-              )}
+
+                <button
+                  type="button"
+                  onClick={() => setOutput("")}
+                  disabled={!output || isRunning}
+                  className="text-[11px] text-zinc-600 transition hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Clear output
+                </button>
+              </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-              {isRunning ? (
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#dc9458]" />
-                  Running code...
+            <div className="flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <label
+                  htmlFor="program-stdin"
+                  className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                >
+                  Input (stdin)
+                </label>
+
+                <textarea
+                  id="program-stdin"
+                  value={stdin}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    stdinRef.current = value;
+                    setStdin(value);
+                  }}
+                  placeholder={"Enter program input...\nExample: 10 20"}
+                  disabled={isRunning}
+                  spellCheck={false}
+                  className="min-h-0 flex-1 resize-none rounded-md border border-white/10 bg-[#090b0d] p-2 font-mono text-xs leading-5 text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[#dc9458]/50 disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Output
+                </span>
+
+                <div className="min-h-0 flex-1 overflow-auto rounded-md border border-white/5 bg-[#090b0d] p-2">
+                  {isRunning ? (
+                    <div className="flex items-center gap-2 text-xs text-zinc-500">
+                      <LoaderCircle
+                        size={13}
+                        className="animate-spin text-[#dc9458]"
+                      />
+                      Executing your code...
+                    </div>
+                  ) : output ? (
+                    <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-300">
+                      {output}
+                    </pre>
+                  ) : (
+                    <p className="text-xs leading-5 text-zinc-600">
+                      Your program output and errors will appear here.
+                    </p>
+                  )}
                 </div>
-              ) : output ? (
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-300">
-                  {output}
-                </pre>
-              ) : (
-                <div className="text-xs text-zinc-600">
-                  Run your code to see the output here.
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </main>

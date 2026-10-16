@@ -2,7 +2,13 @@ const { executeCode } = require("../services/execution.service");
 
 const runCodeController = async (req, res) => {
   try {
-    const { language, code, stdin = "" } = req.body;
+   const { language, code, stdin = "" } = req.body;
+
+console.log("=== EXECUTION INPUT DEBUG ===");
+console.log("Language:", language);
+console.log("Received stdin:", JSON.stringify(stdin));
+console.log("Code length:", typeof code === "string" ? code.length : 0);
+console.log("=============================");
 
     if (!language) {
       return res.status(400).json({
